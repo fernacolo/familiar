@@ -52,13 +52,18 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
-    <Compile Include="HandleStream.cs" />
+    <Compile Include="DataFiles\DataRecord.cs" />
     <Compile Include="Native\VirtualKeyCode.cs" />
     <Compile Include="Native\COORD.cs" />
     <Compile Include="Native\INPUT_RECORD.cs" />
     <Compile Include="Native\RECT.cs" />
     <Compile Include="Native\SECURITY_ATTRIBUTES.cs" />
-    <Compile Include="PseudoConsole.cs" />
+    <Compile Include="Sessions\Configuration.cs" />
+    <Compile Include="Constants.cs" />
+    <Compile Include="ProgramException.cs" />
+    <Compile Include="Sessions\Serializer.cs" />
+    <Compile Include="Sessions\Session.cs" />
+    <Compile Include="Sessions\SizeOnlyStream.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>

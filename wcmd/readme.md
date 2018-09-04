@@ -10,7 +10,7 @@
 
 The program is used in sessions. A session is unically identified by machine, user and code. The code is a random value assigned by the program. The session survives crashes and machine reboots. When the program is used for the first time, a session is created.
 
-Each session has a probabilistic unique session id, referred as `sessionid`. The `sessionid` computed as a hash from the string `{computer-name}/{user-name}/{code}`.
+Each session has a probabilistic unique session id, referred as `sessionid`. When a session is created, the `sessionid` is computed as a hash from the string `{host-name}/{user-name}/{code}`.
 
 ## Synchronization
 
@@ -28,7 +28,7 @@ When the program is used fo the first time, the user selects the remote location
 
 ### Local Session Data
 
-The local session, used for every desktop process, is stored at `%USERPROFILE%\ocmd`. The following files are store there:
+The local session, used for every desktop process, is stored at `%USERPROFILE%\ocmd`. The following files are stored there:
 
 - `config.properties` - A properties file with configuration information.
 - `{sessionid}.sesdef` - The session definition file.
@@ -57,22 +57,13 @@ Periodically, any active process can copy local session files to the designated 
 
 ## File Formats
 
+### Session Definition File (.sesdef)
+
+Session Data File (.dat)
+
+A sequence of records, where each contains the following format:
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-### Session Definition File (sesdef)
 
 
 
