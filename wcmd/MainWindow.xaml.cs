@@ -36,10 +36,10 @@ namespace wcmd
         private static Session CreateCurrentSession()
         {
             var config = Configuration.LoadDefault();
-            if (config == null)
+            if ( config == null )
                 config = Configuration.CreateDefault();
 
-            return new Session(config);
+            return new Session( config );
         }
 
         private readonly Thread _consoleWindowMonitor;
@@ -48,13 +48,13 @@ namespace wcmd
 
         public MainWindow()
         {
-            if (!Kernel32.AllocConsole())
+            if ( !Kernel32.AllocConsole() )
             {
-                Trace.TraceError("Unable to allocate a new console. Is there a console already?");
-                Environment.Exit(1);
+                Trace.TraceError( "Unable to allocate a new console. Is there a console already?" );
+                Environment.Exit( 1 );
             }
 
-            _consoleWindowMonitor = new Thread(ConsoleWindowMonitor);
+            _consoleWindowMonitor = new Thread( ConsoleWindowMonitor );
             _consoleWindowMonitor.Start();
         }
 
@@ -81,34 +81,34 @@ namespace wcmd
                 var lastChange = DateTimeOffset.UtcNow;
 
                 // If there is no change in this time, we consider idle. Use large value to avoid burning user's CPU and battery.
-                var idleTime = TimeSpan.FromSeconds(1);
+                var idleTime = TimeSpan.FromSeconds( 1 );
 
                 // If there is no change in this time, we consider "possibly idle". Use smaller than idle time to be responsive.
-                var possiblyIdleTime = TimeSpan.FromMilliseconds(250);
+                var possiblyIdleTime = TimeSpan.FromMilliseconds( 250 );
 
-                while (true)
+                while ( true )
                 {
                     var timeSinceLastChange = DateTimeOffset.UtcNow - lastChange;
 
-                    if (timeSinceLastChange >= idleTime)
-                        Thread.Sleep(idleTime);
-                    else if (timeSinceLastChange >= possiblyIdleTime)
-                        Thread.Sleep(possiblyIdleTime);
+                    if ( timeSinceLastChange >= idleTime )
+                        Thread.Sleep( idleTime );
+                    else if ( timeSinceLastChange >= possiblyIdleTime )
+                        Thread.Sleep( possiblyIdleTime );
                     else
                         // Since we are not possibly idle, just yield.
                         // This causes immediate redraws as the user resizes, making a responsive UI.
                         Thread.Yield();
 
                     // Detect console position and iconic state.
-                    if (!User32.GetWindowRect(HwndConsole, out var rect))
-                        Trace.TraceError("Unable to determine console window pos.");
+                    if ( !User32.GetWindowRect( HwndConsole, out var rect ) )
+                        Trace.TraceError( "Unable to determine console window pos." );
 
-                    var isIconic = User32.IsIconic(HwndConsole);
+                    var isIconic = User32.IsIconic( HwndConsole );
 
                     // Update position, if needed.
-                    lock (lastPositionLock)
+                    lock ( lastPositionLock )
                     {
-                        if (rect == lastPosition && isIconic == lastIsIconic)
+                        if ( rect == lastPosition && isIconic == lastIsIconic )
                         {
                             // No change means wakeup was not needed. Continue (go back to sleep).
                             //Trace.TraceInformation( "Console window position didn't change." );
@@ -121,32 +121,32 @@ namespace wcmd
                         lastChange = DateTimeOffset.UtcNow;
                     }
 
-                    Dispatcher.Invoke(() =>
+                    Dispatcher.Invoke( () =>
                     {
                         // Make sure the rect still represent up-to-date position.
-                        lock (lastPositionLock)
+                        lock ( lastPositionLock )
                         {
                             // ReSharper disable AccessToModifiedClosure
-                            if (rect != lastPosition || isIconic != lastIsIconic)
+                            if ( rect != lastPosition || isIconic != lastIsIconic )
                             {
                                 // Position changed again after this event got triggered.
                                 // This means another event was generated. Ignore this one to avoid flickering.
-                                Trace.TraceInformation("Ignored position change notification.");
+                                Trace.TraceInformation( "Ignored position change notification." );
                                 return;
                             }
                             // ReSharper restore AccessToModifiedClosure
                         }
 
-                        if (isIconic)
+                        if ( isIconic )
                         {
                             WindowState = WindowState.Minimized;
-                            Trace.TraceInformation("Minimized.");
+                            Trace.TraceInformation( "Minimized." );
                         }
                         else
                         {
                             // If the user shakes the console window, OS will minimize everything (including the tool window).
                             // Therefore, we must restore ourselves.
-                            if (WindowState == WindowState.Minimized)
+                            if ( WindowState == WindowState.Minimized )
                                 WindowState = WindowState.Normal;
 
                             // Put the tool window below the console.
@@ -154,21 +154,21 @@ namespace wcmd
                             Top = rect.Bottom;
                             Width = rect.Width;
 
-                            Trace.TraceInformation("Position changed.");
+                            Trace.TraceInformation( "Position: ({0},{1}) Size: {2}x{3}", rect.Left, rect.Top, rect.Width, rect.Height );
                         }
-                    });
+                    } );
                 }
             }
-            catch (ThreadAbortException)
+            catch ( ThreadAbortException )
             {
             }
-            catch (Exception ex)
+            catch ( Exception ex )
             {
-                Trace.TraceError("{0}", ex);
+                Trace.TraceError( "{0}", ex );
             }
         }
 
-        private void Window_Loaded(object sender, RoutedEventArgs e)
+        private void Window_Loaded( object sender, RoutedEventArgs e )
         {
             var startInfo = new ProcessStartInfo();
             //startInfo.FileName = "cmd.exe";
@@ -179,8 +179,8 @@ namespace wcmd
             //startInfo.RedirectStandardOutput = true;
             //startInfo.RedirectStandardError = true;
             startInfo.CreateNoWindow = false;
-            _process = Process.Start(startInfo);
-            _processMonitor = new Thread(ProcessMonitor);
+            _process = Process.Start( startInfo );
+            _processMonitor = new Thread( ProcessMonitor );
             _processMonitor.Start();
             //process.StandardInput.WriteLine( @"cd \repo\ad\ip\azkms" );
             //process.StandardInput.WriteLine( "git show HEAD" );
@@ -192,39 +192,39 @@ namespace wcmd
             _process.WaitForExit();
             _consoleWindowMonitor.Abort();
             _consoleWindowMonitor.Join();
-            User32.ShowWindow(HwndConsole, User32.ShowWindowCommands.SW_HIDE);
+            User32.ShowWindow( HwndConsole, User32.ShowWindowCommands.SW_HIDE );
             Kernel32.FreeConsole();
-            Environment.Exit(0);
+            Environment.Exit( 0 );
         }
 
-        private void BtRun_Click(object sender, RoutedEventArgs e)
+        private void BtRun_Click( object sender, RoutedEventArgs e )
         {
             var document = RtCommand.Document;
-            var textRange = new TextRange(document.ContentStart, document.ContentEnd);
+            var textRange = new TextRange( document.ContentStart, document.ContentEnd );
             var text = textRange.Text;
 
-            var iCr = text.IndexOf('\r');
-            if (iCr < 0) iCr = text.Length;
+            var iCr = text.IndexOf( '\r' );
+            if ( iCr < 0 ) iCr = text.Length;
 
-            var iLf = text.IndexOf('\n');
-            if (iLf < 0) iLf = text.Length;
+            var iLf = text.IndexOf( '\n' );
+            if ( iLf < 0 ) iLf = text.Length;
 
-            var len = Math.Min(iCr, iLf);
-            text = text.Substring(0, len) + "\r";
+            var len = Math.Min( iCr, iLf );
+            text = text.Substring( 0, len ) + "\r";
 
-            Trace.TraceInformation("Writing \"{0}\"...", text);
-            User32.SetForegroundWindow(HwndConsole);
+            Trace.TraceInformation( "Writing \"{0}\"...", text );
+            User32.SetForegroundWindow( HwndConsole );
             var now = DateTime.Now;
-            SendKeys.SendWait(text);
+            SendKeys.SendWait( text );
             Activate();
             document.Blocks.Clear();
-            CurrentSession.Write(now, text);
+            CurrentSession.Write( now, text );
         }
 
-        private void RtCommand_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+        private void RtCommand_KeyUp( object sender, System.Windows.Input.KeyEventArgs e )
         {
-            if (e.Key == Key.Enter)
-                BtRun_Click(this, e);
+            if ( e.Key == Key.Enter )
+                BtRun_Click( this, e );
         }
 
         /*
