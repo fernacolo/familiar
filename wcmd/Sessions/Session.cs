@@ -12,7 +12,7 @@ namespace wcmd.Sessions
         public Session( Configuration config )
         {
             _config = config;
-            _dataFileName = Path.Combine(config.LocalDbDirectory.ToString(),  $"{config.SessionId}.dat");
+            _dataFileName = Path.Combine( config.LocalDbDirectory.ToString(), $"{config.SessionId}.dat" );
         }
 
         public void Write( DateTime whenExecuted, string command )
@@ -169,6 +169,5 @@ namespace wcmd.Sessions
             writer.Write( (byte) value.Kind );
             writer.Write( value.Ticks );
         }
-
-   }
+    }
 }

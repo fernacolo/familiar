@@ -6,9 +6,18 @@
         mc:Ignorable="d"
         Title="MainWindow" Height="156.108" Width="525" Loaded="Window_Loaded" WindowStyle="None" >
     <Grid>
-        <RichTextBox x:Name="RtCommand" Margin="10,10,10,50" FontFamily="Consolas" AcceptsReturn="False" TextOptions.TextFormattingMode="Display" KeyUp="RtCommand_KeyUp">
-        </RichTextBox>
-        <Button x:Name="BtRun" Content="Run" HorizontalAlignment="Left" Margin="10,0,0,25" VerticalAlignment="Bottom" Width="75" Click="BtRun_Click"/>
+        <TabControl >
+            <TabItem Header="Command">
+                <RichTextBox x:Name="RtCommand" Margin="10,10,10,50" FontFamily="Consolas" AcceptsReturn="False" TextOptions.TextFormattingMode="Display" KeyUp="RtCommand_KeyUp">
+                </RichTextBox>
+            </TabItem>
+            <TabItem Header="Search">
+                <Grid>
+                    <TextBox TextWrapping="Wrap" Text="TextBox" Margin="10,10,10,87" VerticalAlignment="Top"/>
+                    <ListBox Margin="10,28,10,10"/>
+                </Grid>
+            </TabItem>
+        </TabControl>
 
     </Grid>
 </Window>
