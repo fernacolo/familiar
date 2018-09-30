@@ -2,7 +2,7 @@
 using System.IO;
 using System.Xml.Serialization;
 
-namespace wcmd.Sessions
+namespace wcmd.DataFiles
 {
     internal static class Serializer
     {

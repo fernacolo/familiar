@@ -1,61 +1,78 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Security.Principal;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Forms;
 using System.Windows.Input;
+using System.Windows.Threading;
+using wcmd.DataFiles;
+using wcmd.Diagnostics;
 using wcmd.Native;
 using wcmd.Sessions;
 
 // ReSharper disable IdentifierTypo
 
-namespace wcmd
+namespace wcmd.UI
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
     public partial class MainWindow
     {
+        private readonly TraceSource _trace;
         private Thread _outputHandler;
 
-        private IntPtr HwndConsole => _consoleWrapper.Value;
+        private IntPtr HwndConsole => _hwndConsole.Value;
+        private readonly Lazy<IntPtr> _hwndConsole;
 
-        private readonly Lazy<IntPtr> _consoleWrapper = new Lazy<IntPtr>(
-            Kernel32.GetConsoleWindow
-        );
+        private DataFile DataFile => _session.Value;
+        private readonly Lazy<DataFile> _session;
 
-
-        private Session CurrentSession => _session.Value;
-
-        private readonly Lazy<Session> _session = new Lazy<Session>(
-            CreateCurrentSession
-        );
-
-        private static Session CreateCurrentSession()
+        private static DataFile CreateCurrentSession()
         {
-            var config = Configuration.LoadDefault();
-            if ( config == null )
-                config = Configuration.CreateDefault();
+            var config = Configuration.LoadDefault() ?? Configuration.CreateDefault();
+            return new DataFile( config );
+        }
 
-            return new Session( config );
+        private Searcher Searcher => _searcher.Value;
+
+        private readonly Lazy<Searcher> _searcher;
+
+        private Searcher CreateCurrentSearcher()
+        {
+            return new Searcher( DataFile );
         }
 
         private readonly Thread _consoleWindowMonitor;
+        private readonly DispatcherTimer _timer;
+
         private Process _process;
         private Thread _processMonitor;
+        private DateTime _lastKeypress;
+        private Findings _lastFindings;
 
         public MainWindow()
         {
+            _trace = DiagnosticsCenter.GetTraceSource( this );
+            _hwndConsole = new Lazy<IntPtr>( Kernel32.GetConsoleWindow );
+            _session = new Lazy<DataFile>( CreateCurrentSession );
+            _searcher = new Lazy<Searcher>( CreateCurrentSearcher );
+
             if ( !Kernel32.AllocConsole() )
             {
-                Trace.TraceError( "Unable to allocate a new console. Is there a console already?" );
+                _trace.TraceError( "Unable to allocate a new console. Is there a console already?" );
                 Environment.Exit( 1 );
             }
 
             _consoleWindowMonitor = new Thread( ConsoleWindowMonitor );
             _consoleWindowMonitor.Start();
+
+            _timer = new DispatcherTimer();
+            _timer.Tick += Tick;
+            _timer.Interval = new TimeSpan( 0, 0, 1 );
+            _timer.Start();
         }
 
         /// <summary>
@@ -101,7 +118,7 @@ namespace wcmd
 
                     // Detect console position and iconic state.
                     if ( !User32.GetWindowRect( HwndConsole, out var rect ) )
-                        Trace.TraceError( "Unable to determine console window pos." );
+                        _trace.TraceError( "Unable to determine console window pos." );
 
                     var isIconic = User32.IsIconic( HwndConsole );
 
@@ -111,7 +128,7 @@ namespace wcmd
                         if ( rect == lastPosition && isIconic == lastIsIconic )
                         {
                             // No change means wakeup was not needed. Continue (go back to sleep).
-                            //Trace.TraceInformation( "Console window position didn't change." );
+                            //_trace.TraceInformation( "Console window position didn't change." );
                             continue;
                         }
 
@@ -131,7 +148,7 @@ namespace wcmd
                             {
                                 // Position changed again after this event got triggered.
                                 // This means another event was generated. Ignore this one to avoid flickering.
-                                Trace.TraceInformation( "Ignored position change notification." );
+                                _trace.TraceInformation( "Ignored position change notification." );
                                 return;
                             }
                             // ReSharper restore AccessToModifiedClosure
@@ -140,7 +157,7 @@ namespace wcmd
                         if ( isIconic )
                         {
                             WindowState = WindowState.Minimized;
-                            Trace.TraceInformation( "Minimized." );
+                            _trace.TraceInformation( "Minimized." );
                         }
                         else
                         {
@@ -154,7 +171,7 @@ namespace wcmd
                             Top = rect.Bottom;
                             Width = rect.Width;
 
-                            Trace.TraceInformation( "Position: ({0},{1}) Size: {2}x{3}", rect.Left, rect.Top, rect.Width, rect.Height );
+                            _trace.TraceInformation( "Position: ({0},{1}) Size: {2}x{3}", rect.Left, rect.Top, rect.Width, rect.Height );
                         }
                     } );
                 }
@@ -164,7 +181,7 @@ namespace wcmd
             }
             catch ( Exception ex )
             {
-                Trace.TraceError( "{0}", ex );
+                _trace.TraceError( ex.ToString() );
             }
         }
 
@@ -197,6 +214,33 @@ namespace wcmd
             Environment.Exit( 0 );
         }
 
+        private LogView _logWindow;
+
+        private void Tick( object sender, EventArgs e )
+        {
+            if ( _logWindow == null )
+            {
+                _logWindow = new LogView();
+                _logWindow.Show();
+            }
+
+            var sinceLastKey = DateTime.Now - _lastKeypress;
+            if ( sinceLastKey < TimeSpan.FromSeconds( 1 ) )
+                return;
+
+            var findings = Searcher.GetFindings();
+            if ( findings == _lastFindings )
+                return;
+
+            _trace.TraceInformation( "Detected new findings" );
+            LbSearchResults.Items.Clear();
+            if ( findings != null )
+                foreach ( var item in findings.FoundItems )
+                    LbSearchResults.Items.Add( new ListBoxItem() {Content = item.Original, Height = 20} );
+
+            _lastFindings = findings;
+        }
+
         private void BtRun_Click( object sender, RoutedEventArgs e )
         {
             var document = RtCommand.Document;
@@ -212,19 +256,73 @@ namespace wcmd
             var len = Math.Min( iCr, iLf );
             text = text.Substring( 0, len ) + "\r";
 
-            Trace.TraceInformation( "Writing \"{0}\"...", text );
+            _trace.TraceInformation( "Writing \"{0}\"...", text );
             User32.SetForegroundWindow( HwndConsole );
             var now = DateTime.Now;
             SendKeys.SendWait( text );
             Activate();
             document.Blocks.Clear();
-            CurrentSession.Write( now, text );
+            DataFile.Write( now, text );
         }
 
         private void RtCommand_KeyUp( object sender, System.Windows.Input.KeyEventArgs e )
         {
             if ( e.Key == Key.Enter )
                 BtRun_Click( this, e );
+        }
+
+        private void TextBox_TextChanged( object sender, System.Windows.Controls.TextChangedEventArgs e )
+        {
+            Searcher.SetSearchText( TbSearch.Text );
+            _lastKeypress = DateTime.Now;
+        }
+
+        private void TbSearch_PreviewKeyDown( object sender, System.Windows.Input.KeyEventArgs e )
+        {
+            switch ( e.Key )
+            {
+                case Key.Up:
+                    MoveSelected( -1 );
+                    e.Handled = true;
+                    return;
+
+                case Key.Down:
+                    MoveSelected( 1 );
+                    e.Handled = true;
+                    return;
+
+                case Key.Enter:
+                    var item = GetSelected();
+                    if ( item != null )
+                    {
+                        RtCommand.Document.Blocks.Clear();
+                        RtCommand.Document.Blocks.Add( new Paragraph( new Run( item ) ) );
+                        BtRun_Click( sender, e );
+                        e.Handled = true;
+                    }
+
+                    return;
+            }
+        }
+
+        private string GetSelected()
+        {
+            var idx = LbSearchResults.SelectedIndex;
+            var count = LbSearchResults.Items.Count;
+            if ( idx < 0 || idx >= count )
+                return null;
+            return (string) ((ListBoxItem) LbSearchResults.Items[idx]).Content;
+        }
+
+        private void MoveSelected( int move )
+        {
+            var idx = LbSearchResults.SelectedIndex + move;
+            var count = LbSearchResults.Items.Count;
+            if ( idx < 0 || idx >= count )
+                return;
+
+            LbSearchResults.SelectedIndex = idx;
+            LbSearchResults.ScrollIntoView( LbSearchResults.Items[idx] );
         }
 
         /*

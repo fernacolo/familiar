@@ -4,6 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
+using wcmd.DataFiles;
 
 namespace wcmd.Sessions
 {
@@ -27,7 +28,7 @@ namespace wcmd.Sessions
         {
             var appDataRoot = Environment.GetFolderPath( Environment.SpecialFolder.LocalApplicationData );
             if ( string.IsNullOrWhiteSpace( appDataRoot ) )
-                throw new ProgramException( "The special folder LocalApplicationData is not specified." );
+                throw new Exception( "The special folder LocalApplicationData is not specified." );
 
             Trace.TraceInformation( "Environment LocalApplicationData: {0}", appDataRoot );
 
