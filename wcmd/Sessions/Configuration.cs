@@ -5,11 +5,14 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using wcmd.DataFiles;
+using wcmd.Diagnostics;
 
 namespace wcmd.Sessions
 {
     internal class Configuration
     {
+        private static readonly TraceSource _trace = DiagnosticsCenter.GetTraceSource( typeof( Configuration ) );
+
         #region Static
 
         private static FileInfo GetDefaultConfigFile()
@@ -30,16 +33,16 @@ namespace wcmd.Sessions
             if ( string.IsNullOrWhiteSpace( appDataRoot ) )
                 throw new Exception( "The special folder LocalApplicationData is not specified." );
 
-            Trace.TraceInformation( "Environment LocalApplicationData: {0}", appDataRoot );
+            _trace.TraceInformation( "Environment LocalApplicationData: {0}", appDataRoot );
 
             var dbDir = new DirectoryInfo( Path.Combine( appDataRoot, Constants.LocalDirectory ) );
-            Trace.TraceInformation( "Local database directory: {0}", dbDir );
+            _trace.TraceInformation( "Local database directory: {0}", dbDir );
 
             if ( dbDir.Exists )
                 return dbDir;
 
-            Trace.TraceWarning( "Local database directory does not exist: {0}", dbDir );
-            Trace.TraceInformation( "Trying to create local database directory..." );
+            _trace.TraceWarning( "Local database directory does not exist: {0}", dbDir );
+            _trace.TraceInformation( "Trying to create local database directory..." );
             dbDir.Create();
 
             return dbDir;
@@ -56,10 +59,10 @@ namespace wcmd.Sessions
 
         private static Configuration LoadFromFile( FileInfo configFile )
         {
-            Trace.TraceInformation( "Reading configuration file: {0}", configFile );
+            _trace.TraceInformation( "Reading configuration file: {0}", configFile );
             if ( !configFile.Exists )
             {
-                Trace.TraceInformation( "Configuration file does not exist." );
+                _trace.TraceInformation( "Configuration file does not exist." );
                 return null;
             }
 
@@ -91,7 +94,7 @@ namespace wcmd.Sessions
 
             var configFile = GetDefaultConfigFile();
 
-            Trace.TraceInformation( "Writing configuration file: {0}", configFile );
+            _trace.TraceInformation( "Writing configuration file: {0}", configFile );
 
             using ( var stream = new FileStream( configFile.FullName, FileMode.CreateNew ) )
             {

@@ -16,9 +16,14 @@ namespace wcmd.Diagnostics
             return result;
         }
 
-        public static void TraceError( this TraceSource source, string message )
+        public static void TraceError( this TraceSource source, string message, params object[] args )
         {
-            source.TraceEvent( TraceEventType.Error, 0, message );
+            source.TraceEvent( TraceEventType.Error, 0, message, args );
+        }
+
+        public static void TraceWarning( this TraceSource source, string message, params object[] args )
+        {
+            source.TraceEvent( TraceEventType.Warning, 0, message, args );
         }
     }
 

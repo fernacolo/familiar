@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Data.SqlTypes;
 using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
@@ -58,7 +59,7 @@ namespace wcmd.UI
 
         public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string message )
         {
-            message = $"[{source} - {eventType}] {message}\r";
+            message = $"[{DateTime.UtcNow:O}  {source} - {eventType}] {message}\r";
             if ( _dispatcher.CheckAccess() )
                 Append( message );
             else

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -11,6 +12,7 @@ using wcmd.DataFiles;
 using wcmd.Diagnostics;
 using wcmd.Native;
 using wcmd.Sessions;
+using MessageBox = System.Windows.MessageBox;
 
 // ReSharper disable IdentifierTypo
 
@@ -22,57 +24,98 @@ namespace wcmd.UI
     public partial class MainWindow
     {
         private readonly TraceSource _trace;
-        private Thread _outputHandler;
-
-        private IntPtr HwndConsole => _hwndConsole.Value;
-        private readonly Lazy<IntPtr> _hwndConsole;
-
-        private DataFile DataFile => _session.Value;
-        private readonly Lazy<DataFile> _session;
-
-        private static DataFile CreateCurrentSession()
-        {
-            var config = Configuration.LoadDefault() ?? Configuration.CreateDefault();
-            return new DataFile( config );
-        }
-
-        private Searcher Searcher => _searcher.Value;
-
-        private readonly Lazy<Searcher> _searcher;
-
-        private Searcher CreateCurrentSearcher()
-        {
-            return new Searcher( DataFile );
-        }
-
-        private readonly Thread _consoleWindowMonitor;
+        private readonly Thread _parentProcessObserver;
+        private readonly Thread _consoleWindowObserver;
         private readonly DispatcherTimer _timer;
 
-        private Process _process;
-        private Thread _processMonitor;
+        private LogView _logWindow;
+        private Process _parentProcess;
+
+        private DataFile _dataFile;
+        private Searcher _searcher;
+
         private DateTime _lastKeypress;
         private Findings _lastFindings;
 
         public MainWindow()
         {
+            // Safe initializations. Do not put anything here that can throw an exception.
+            // Defer to loaded.
+
             _trace = DiagnosticsCenter.GetTraceSource( this );
-            _hwndConsole = new Lazy<IntPtr>( Kernel32.GetConsoleWindow );
-            _session = new Lazy<DataFile>( CreateCurrentSession );
-            _searcher = new Lazy<Searcher>( CreateCurrentSearcher );
 
-            if ( !Kernel32.AllocConsole() )
-            {
-                _trace.TraceError( "Unable to allocate a new console. Is there a console already?" );
-                Environment.Exit( 1 );
-            }
+            _parentProcessObserver = new Thread( ParentProcessObserver );
 
-            _consoleWindowMonitor = new Thread( ConsoleWindowMonitor );
-            _consoleWindowMonitor.Start();
+            _consoleWindowObserver = new Thread( ConsoleWindowObserver );
 
             _timer = new DispatcherTimer();
             _timer.Tick += Tick;
-            _timer.Interval = new TimeSpan( 0, 0, 1 );
+            _timer.Interval = new TimeSpan( 0, 0, 0, 1 );
+        }
+
+        private void Window_Loaded( object sender, RoutedEventArgs e )
+        {
+            _logWindow = new LogView();
+            _logWindow.Show();
+
+            var config = Configuration.LoadDefault() ?? Configuration.CreateDefault();
+
+            smPROCESS_BASIC_INFORMATION processBasicInformation = new smPROCESS_BASIC_INFORMATION();
+            var result = Ntdll.NtQueryInformationProcess( Process.GetCurrentProcess().Handle, Ntdll.ProcessBasicInformation, ref processBasicInformation, Marshal.SizeOf( processBasicInformation ), out var returnLength );
+            _trace.TraceInformation( "{0} returned {1}", nameof( Ntdll.NtQueryInformationProcess ), result );
+
+            var parentPid = processBasicInformation.InheritedFromUniqueProcessId.ToInt32();
+            _trace.TraceInformation( "Parent PID: {0}", parentPid );
+
+            _parentProcess = Process.GetProcessById( parentPid );
+
+            var args = Environment.GetCommandLineArgs();
+            for ( var i = 0; i < args.Length; ++i )
+                _trace.TraceInformation( "args[{0}]: {1}", i, args[i] );
+
+            var attached = Kernel32.AttachConsole( (uint) parentPid );
+            _trace.TraceInformation( "{0} returned {1}", nameof( Kernel32.AttachConsole ), attached );
+
+            var hwndConsole = Kernel32.GetConsoleWindow();
+            if ( hwndConsole == IntPtr.Zero )
+            {
+                _trace.TraceWarning( "No console window detected." );
+                MessageBox.Show( "Console not detected.\r\nPlease, start the familiar from Command Prompt or Powershell.", "Familiar Notification", MessageBoxButton.OK, MessageBoxImage.Information );
+                Environment.Exit( ExitCodes.ConsoleNotDetected );
+            }
+
+            _dataFile = new DataFile( config );
+            _searcher = new Searcher( _dataFile );
+
+            _parentProcessObserver.Start();
+            _consoleWindowObserver.Start();
             _timer.Start();
+
+            /*
+            var startInfo = new ProcessStartInfo();
+            //startInfo.FileName = "cmd.exe";
+            startInfo.FileName = "powershell.exe";
+            //startInfo.Arguments = string.Format(CultureInfo.InvariantCulture, "/d /c {0}", commandLine);
+            startInfo.UseShellExecute = false;
+            //startInfo.RedirectStandardInput = true;
+            //startInfo.RedirectStandardOutput = true;
+            //startInfo.RedirectStandardError = true;
+            startInfo.CreateNoWindow = false;
+            _process = Process.Start( startInfo );
+            _parentProcessObserver = new Thread( ParentProcessObserver );
+            _parentProcessObserver.Start();
+            //process.StandardInput.WriteLine( @"cd \repo\ad\ip\azkms" );
+            //process.StandardInput.WriteLine( "git show HEAD" );
+            RtCommand.Focus();
+            */
+        }
+
+        private void ParentProcessObserver()
+        {
+            _parentProcess.WaitForExit();
+            _consoleWindowObserver.Abort();
+            _consoleWindowObserver.Join();
+            Environment.Exit( 0 );
         }
 
         /// <summary>
@@ -84,7 +127,7 @@ namespace wcmd.UI
         /// move ourselves when that changes.
         /// Precautions are taken to avoid burning CPU and battery (see implementation).
         /// </remarks>
-        private void ConsoleWindowMonitor()
+        private void ConsoleWindowObserver()
         {
             try
             {
@@ -116,11 +159,15 @@ namespace wcmd.UI
                         // This causes immediate redraws as the user resizes, making a responsive UI.
                         Thread.Yield();
 
+                    var hwndConsole = Kernel32.GetConsoleWindow();
+                    if ( hwndConsole == IntPtr.Zero )
+                        continue;
+
                     // Detect console position and iconic state.
-                    if ( !User32.GetWindowRect( HwndConsole, out var rect ) )
+                    if ( !User32.GetWindowRect( hwndConsole, out var rect ) )
                         _trace.TraceError( "Unable to determine console window pos." );
 
-                    var isIconic = User32.IsIconic( HwndConsole );
+                    var isIconic = User32.IsIconic( hwndConsole );
 
                     // Update position, if needed.
                     lock ( lastPositionLock )
@@ -185,50 +232,13 @@ namespace wcmd.UI
             }
         }
 
-        private void Window_Loaded( object sender, RoutedEventArgs e )
-        {
-            var startInfo = new ProcessStartInfo();
-            //startInfo.FileName = "cmd.exe";
-            startInfo.FileName = "powershell.exe";
-            //startInfo.Arguments = string.Format(CultureInfo.InvariantCulture, "/d /c {0}", commandLine);
-            startInfo.UseShellExecute = false;
-            //startInfo.RedirectStandardInput = true;
-            //startInfo.RedirectStandardOutput = true;
-            //startInfo.RedirectStandardError = true;
-            startInfo.CreateNoWindow = false;
-            _process = Process.Start( startInfo );
-            _processMonitor = new Thread( ProcessMonitor );
-            _processMonitor.Start();
-            //process.StandardInput.WriteLine( @"cd \repo\ad\ip\azkms" );
-            //process.StandardInput.WriteLine( "git show HEAD" );
-            RtCommand.Focus();
-        }
-
-        private void ProcessMonitor()
-        {
-            _process.WaitForExit();
-            _consoleWindowMonitor.Abort();
-            _consoleWindowMonitor.Join();
-            User32.ShowWindow( HwndConsole, User32.ShowWindowCommands.SW_HIDE );
-            Kernel32.FreeConsole();
-            Environment.Exit( 0 );
-        }
-
-        private LogView _logWindow;
-
         private void Tick( object sender, EventArgs e )
         {
-            if ( _logWindow == null )
-            {
-                _logWindow = new LogView();
-                _logWindow.Show();
-            }
-
             var sinceLastKey = DateTime.Now - _lastKeypress;
             if ( sinceLastKey < TimeSpan.FromSeconds( 1 ) )
                 return;
 
-            var findings = Searcher.GetFindings();
+            var findings = _searcher.GetFindings();
             if ( findings == _lastFindings )
                 return;
 
@@ -257,12 +267,12 @@ namespace wcmd.UI
             text = text.Substring( 0, len ) + "\r";
 
             _trace.TraceInformation( "Writing \"{0}\"...", text );
-            User32.SetForegroundWindow( HwndConsole );
+            User32.SetForegroundWindow( Kernel32.GetConsoleWindow() );
             var now = DateTime.Now;
             SendKeys.SendWait( text );
             Activate();
             document.Blocks.Clear();
-            DataFile.Write( now, text );
+            _dataFile.Write( now, text );
         }
 
         private void RtCommand_KeyUp( object sender, System.Windows.Input.KeyEventArgs e )
@@ -273,7 +283,7 @@ namespace wcmd.UI
 
         private void TextBox_TextChanged( object sender, System.Windows.Controls.TextChangedEventArgs e )
         {
-            Searcher.SetSearchText( TbSearch.Text );
+            _searcher.SetSearchText( TbSearch.Text );
             _lastKeypress = DateTime.Now;
         }
 
@@ -344,5 +354,10 @@ namespace wcmd.UI
             }
         }
         */
+    }
+
+    internal class ExitCodes
+    {
+        public static readonly int ConsoleNotDetected = 1;
     }
 }

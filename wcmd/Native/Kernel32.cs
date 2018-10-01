@@ -94,6 +94,11 @@ private const uint FILE_ATTRIBUTE_ENCRYPTED       = 0x00004000;
         );
 
         [DllImport( "kernel32" )]
+        public static extern bool CloseHandle(
+            IntPtr hObject
+        );
+
+        [DllImport( "kernel32" )]
         public static extern bool ReadFile(
             IntPtr hFile,
             [Out] byte[] lpBuffer,
@@ -131,6 +136,9 @@ private const uint FILE_ATTRIBUTE_ENCRYPTED       = 0x00004000;
 
         [DllImport( "kernel32" )]
         public static extern bool AllocConsole();
+
+        [DllImport( "kernel32" )]
+        public static extern bool AttachConsole( uint dwProcessId );
 
         [DllImport( "kernel32" )]
         public static extern bool FreeConsole();
