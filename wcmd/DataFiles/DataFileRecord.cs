@@ -4,7 +4,7 @@ using System.Text;
 
 namespace wcmd.DataFiles
 {
-    internal sealed class DataFileRecord
+    public sealed class DataFileRecord
     {
         public const byte CommandV1 = 0x01;
 

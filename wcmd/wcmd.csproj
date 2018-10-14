@@ -58,9 +58,11 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="DataFiles\CachedDataFile.cs" />
     <Compile Include="DataFiles\CommandPage.cs" />
     <Compile Include="DataFiles\DataCorruptionException.cs" />
     <Compile Include="DataFiles\DataFileRecord.cs" />
+    <Compile Include="DataFiles\IDataFile.cs" />
     <Compile Include="Diagnostics\DiagnosticsCenter.cs" />
     <Compile Include="Native\Ntdll.cs" />
     <Compile Include="Native\VirtualKeyCode.cs" />
@@ -77,10 +79,10 @@
     <Compile Include="DataFiles\Serializer.cs" />
     <Compile Include="DataFiles\DataFile.cs" />
     <Compile Include="DataFiles\SizeOnlyStream.cs" />
-    <Page Include="UI\LogView.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
+    <Compile Include="DataFiles\ReplicationJob.cs" />
+    <Compile Include="UI\SearchWindow.xaml.cs">
+      <DependentUpon>SearchWindow.xaml</DependentUpon>
+    </Compile>
     <Page Include="UI\MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -90,13 +92,14 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Native\Kernel32.cs" />
-    <Compile Include="UI\LogView.xaml.cs">
-      <DependentUpon>LogView.xaml</DependentUpon>
-    </Compile>
     <Compile Include="UI\MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="UI\SearchWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Native\User32.cs" />

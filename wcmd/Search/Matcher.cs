@@ -1,6 +1,6 @@
 ﻿namespace wcmd
 {
-    internal class Matcher
+    public class Matcher
     {
         private readonly string _searchText;
 

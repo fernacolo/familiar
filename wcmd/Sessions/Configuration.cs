@@ -124,10 +124,12 @@ namespace wcmd.Sessions
         {
             ConfigFile = configFile;
             SessionId = configData.SessionId;
+            SharedDirectory = !string.IsNullOrWhiteSpace( configData.SharedFolder ) ? new DirectoryInfo( configData.SharedFolder ) : null;
         }
 
         public FileInfo ConfigFile { get; }
         public Guid SessionId { get; }
+        public DirectoryInfo SharedDirectory { get; }
         public DirectoryInfo LocalDbDirectory => ConfigFile.Directory;
     }
 
@@ -136,6 +138,7 @@ namespace wcmd.Sessions
         public Guid SessionId;
         public string HostName;
         public string UserName;
+        public string SharedFolder;
         public int Random;
         public DateTime WhenCreated;
     }

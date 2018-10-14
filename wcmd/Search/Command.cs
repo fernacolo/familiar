@@ -3,7 +3,7 @@ using wcmd.DataFiles;
 
 namespace wcmd
 {
-    internal sealed class Command
+    public sealed class Command
     {
         private readonly string _original;
         private readonly DateTime _whenExecuted;

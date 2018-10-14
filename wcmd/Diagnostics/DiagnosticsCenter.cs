@@ -8,9 +8,12 @@ namespace wcmd.Diagnostics
     {
         private static readonly LogViewTraceListener _logViewListener = new LogViewTraceListener();
 
-        public static TraceSource GetTraceSource( object owner )
+        public static TraceSource GetTraceSource( object owner, string name = null )
         {
-            var result = new TraceSource( owner.GetType().Name, SourceLevels.All );
+            var sourceName = owner.GetType().Name;
+            if ( name != null )
+                sourceName += "." + name;
+            var result = new TraceSource( sourceName, SourceLevels.All );
             result.Listeners.Clear();
             result.Listeners.Add( _logViewListener );
             return result;
@@ -71,11 +74,13 @@ namespace wcmd.Diagnostics
         public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string message )
         {
             Actual.TraceEvent( eventCache, source, eventType, id, message );
+            Actual.Flush();
         }
 
         public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string format, params object[] args )
         {
             Actual.TraceEvent( eventCache, source, eventType, id, format, args );
+            Actual.Flush();
         }
 
         public override void TraceTransfer( TraceEventCache eventCache, string source, int id, string message, Guid relatedActivityId )

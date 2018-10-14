@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace wcmd
 {
-    internal sealed class Findings
+    public sealed class Findings
     {
         private readonly Matcher _matcher;
         private readonly List<Command> _foundItems;

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace wcmd.DataFiles
 {
-    internal sealed class CommandPage
+    public sealed class CommandPage
     {
         public long Offset;
         public readonly List<DataFileRecord> Items = new List<DataFileRecord>();

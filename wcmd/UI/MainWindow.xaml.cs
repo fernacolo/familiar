@@ -3,15 +3,14 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Forms;
 using System.Windows.Input;
-using System.Windows.Threading;
 using wcmd.DataFiles;
 using wcmd.Diagnostics;
 using wcmd.Native;
 using wcmd.Sessions;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MessageBox = System.Windows.MessageBox;
 
 // ReSharper disable IdentifierTypo
@@ -26,16 +25,13 @@ namespace wcmd.UI
         private readonly TraceSource _trace;
         private readonly Thread _parentProcessObserver;
         private readonly Thread _consoleWindowObserver;
-        private readonly DispatcherTimer _timer;
 
-        private LogView _logWindow;
         private Process _parentProcess;
 
-        private DataFile _dataFile;
+        private CachedDataFile _dataFile;
         private Searcher _searcher;
-
-        private DateTime _lastKeypress;
-        private Findings _lastFindings;
+        private ReplicationJob _inboundMonitor;
+        private ReplicationJob _outboundMonitor;
 
         public MainWindow()
         {
@@ -47,18 +43,17 @@ namespace wcmd.UI
             _parentProcessObserver = new Thread( ParentProcessObserver );
 
             _consoleWindowObserver = new Thread( ConsoleWindowObserver );
-
-            _timer = new DispatcherTimer();
-            _timer.Tick += Tick;
-            _timer.Interval = new TimeSpan( 0, 0, 0, 1 );
         }
 
         private void Window_Loaded( object sender, RoutedEventArgs e )
         {
-            _logWindow = new LogView();
-            _logWindow.Show();
-
+            _trace.TraceInformation( "Reading configuration..." );
             var config = Configuration.LoadDefault() ?? Configuration.CreateDefault();
+
+            //var logFileName = Path.Combine( config.LocalDbDirectory.FullName, $"log-{DateTime.Now:yyyy-MM-dd,HHmm}.txt" );
+            //_trace.TraceInformation( "Log file: {0}", logFileName );
+            //var stream = new FileStream( logFileName, FileMode.Append, FileAccess.Write, FileShare.Read | FileShare.Delete, 1, false );
+            //LogViewTraceListener.Actual = new TextWriterTraceListener( stream );
 
             smPROCESS_BASIC_INFORMATION processBasicInformation = new smPROCESS_BASIC_INFORMATION();
             var result = Ntdll.NtQueryInformationProcess( Process.GetCurrentProcess().Handle, Ntdll.ProcessBasicInformation, ref processBasicInformation, Marshal.SizeOf( processBasicInformation ), out var returnLength );
@@ -84,12 +79,26 @@ namespace wcmd.UI
                 Environment.Exit( ExitCodes.ConsoleNotDetected );
             }
 
-            _dataFile = new DataFile( config );
+            _dataFile = new CachedDataFile( new DataFile( config ) );
+            //_dataFile.DumpRecords();
             _searcher = new Searcher( _dataFile );
+
+            if ( config.SharedDirectory != null )
+            {
+                _trace.TraceInformation( "Using shared folder: {0}", config.SharedDirectory.FullName );
+                _inboundMonitor = new ReplicationJob( "InboundReplication", config.SharedDirectory, config.LocalDbDirectory, TimeSpan.FromSeconds( 10 ), IsNotMyDataFile );
+                _inboundMonitor.Start();
+                _outboundMonitor = new ReplicationJob( "OutboundReplication", config.LocalDbDirectory, config.SharedDirectory, TimeSpan.FromSeconds( 30 ), IsMyDataFile );
+                _outboundMonitor.Start();
+            }
+            else
+            {
+                _trace.TraceWarning( "Shared folder not found: {0}.", config.SharedDirectory?.FullName );
+                _trace.TraceWarning( "Replication is disabled." );
+            }
 
             _parentProcessObserver.Start();
             _consoleWindowObserver.Start();
-            _timer.Start();
 
             /*
             var startInfo = new ProcessStartInfo();
@@ -108,6 +117,18 @@ namespace wcmd.UI
             //process.StandardInput.WriteLine( "git show HEAD" );
             RtCommand.Focus();
             */
+
+            _trace.TraceInformation( "Initialization finished." );
+        }
+
+        private bool IsMyDataFile( string fileName )
+        {
+            return string.Equals( _dataFile.FileName, fileName, StringComparison.OrdinalIgnoreCase );
+        }
+
+        private bool IsNotMyDataFile( string fileName )
+        {
+            return !IsMyDataFile( fileName );
         }
 
         private void ParentProcessObserver()
@@ -213,10 +234,24 @@ namespace wcmd.UI
                             if ( WindowState == WindowState.Minimized )
                                 WindowState = WindowState.Normal;
 
+                            var topLeft = new Point( rect.Left, rect.Top );
+                            var size = new Point( rect.Right - rect.Left + 1, rect.Bottom - rect.Top + 1 );
+
+                            _trace.TraceInformation( "Console Position: ({0},{1}) Size: {2}x{3}", topLeft.X, topLeft.Y, size.X, size.Y );
+
+                            var compositionTarget = PresentationSource.FromVisual( this )?.CompositionTarget;
+                            if ( compositionTarget != null )
+                            {
+                                // Transform device coords to window coords.
+                                topLeft = compositionTarget.TransformFromDevice.Transform( topLeft );
+                                size = compositionTarget.TransformFromDevice.Transform( size );
+                                _trace.TraceInformation( "After transform, console Position: ({0},{1}) Size: {2}x{3}", topLeft.X, topLeft.Y, size.X, size.Y );
+                            }
+
                             // Put the tool window below the console.
-                            Left = rect.Left;
-                            Top = rect.Bottom;
-                            Width = rect.Width;
+                            Left = topLeft.X;
+                            Top = topLeft.Y + size.Y;
+                            Width = size.X;
 
                             _trace.TraceInformation( "Position: ({0},{1}) Size: {2}x{3}", rect.Left, rect.Top, rect.Width, rect.Height );
                         }
@@ -230,25 +265,6 @@ namespace wcmd.UI
             {
                 _trace.TraceError( ex.ToString() );
             }
-        }
-
-        private void Tick( object sender, EventArgs e )
-        {
-            var sinceLastKey = DateTime.Now - _lastKeypress;
-            if ( sinceLastKey < TimeSpan.FromSeconds( 1 ) )
-                return;
-
-            var findings = _searcher.GetFindings();
-            if ( findings == _lastFindings )
-                return;
-
-            _trace.TraceInformation( "Detected new findings" );
-            LbSearchResults.Items.Clear();
-            if ( findings != null )
-                foreach ( var item in findings.FoundItems )
-                    LbSearchResults.Items.Add( new ListBoxItem() {Content = item.Original, Height = 20} );
-
-            _lastFindings = findings;
         }
 
         private void BtRun_Click( object sender, RoutedEventArgs e )
@@ -275,64 +291,23 @@ namespace wcmd.UI
             _dataFile.Write( now, text );
         }
 
-        private void RtCommand_KeyUp( object sender, System.Windows.Input.KeyEventArgs e )
+        private void RtCommand_KeyUp( object sender, KeyEventArgs e )
         {
             if ( e.Key == Key.Enter )
                 BtRun_Click( this, e );
         }
 
-        private void TextBox_TextChanged( object sender, System.Windows.Controls.TextChangedEventArgs e )
+        private void MenuItem_Click( object sender, RoutedEventArgs e )
         {
-            _searcher.SetSearchText( TbSearch.Text );
-            _lastKeypress = DateTime.Now;
-        }
-
-        private void TbSearch_PreviewKeyDown( object sender, System.Windows.Input.KeyEventArgs e )
-        {
-            switch ( e.Key )
+            var dialog = new SearchWindow( _searcher );
+            dialog.Owner = this;
+            dialog.ShowDialog();
+            var selectedCommand = dialog.SelectedCommand;
+            if ( selectedCommand != null )
             {
-                case Key.Up:
-                    MoveSelected( -1 );
-                    e.Handled = true;
-                    return;
-
-                case Key.Down:
-                    MoveSelected( 1 );
-                    e.Handled = true;
-                    return;
-
-                case Key.Enter:
-                    var item = GetSelected();
-                    if ( item != null )
-                    {
-                        RtCommand.Document.Blocks.Clear();
-                        RtCommand.Document.Blocks.Add( new Paragraph( new Run( item ) ) );
-                        BtRun_Click( sender, e );
-                        e.Handled = true;
-                    }
-
-                    return;
+                RtCommand.Document.Blocks.Clear();
+                RtCommand.Document.Blocks.Add( new Paragraph( new Run( dialog.SelectedCommand ) ) );
             }
-        }
-
-        private string GetSelected()
-        {
-            var idx = LbSearchResults.SelectedIndex;
-            var count = LbSearchResults.Items.Count;
-            if ( idx < 0 || idx >= count )
-                return null;
-            return (string) ((ListBoxItem) LbSearchResults.Items[idx]).Content;
-        }
-
-        private void MoveSelected( int move )
-        {
-            var idx = LbSearchResults.SelectedIndex + move;
-            var count = LbSearchResults.Items.Count;
-            if ( idx < 0 || idx >= count )
-                return;
-
-            LbSearchResults.SelectedIndex = idx;
-            LbSearchResults.ScrollIntoView( LbSearchResults.Items[idx] );
         }
 
         /*

@@ -2,12 +2,13 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading;
 using wcmd.Diagnostics;
 using wcmd.Sessions;
 
 namespace wcmd.DataFiles
 {
-    internal sealed class DataFile
+    internal sealed class DataFile: IDataFile
     {
         private readonly TraceSource _trace;
         private readonly string _dataFileName;
@@ -16,6 +17,37 @@ namespace wcmd.DataFiles
         {
             _trace = DiagnosticsCenter.GetTraceSource( this );
             _dataFileName = Path.Combine( config.LocalDbDirectory.ToString(), $"{config.SessionId}.dat" );
+        }
+
+        public string FileName => new FileInfo( _dataFileName ).Name;
+
+        public void DumpRecords()
+        {
+            var lastGoodPosition = 0L;
+            try
+            {
+                using ( var reader = GetReader() )
+                {
+                    var stream = reader.BaseStream;
+                    var length = stream.Length;
+                    while ( stream.Position < length )
+                    {
+                        _trace.TraceInformation( "Reading at {0}", stream.Position );
+                        var size = ReadOpenMark( reader );
+                        _trace.TraceInformation( "Found record with size: {0}", size );
+                        reader.ReadBytes( Align( size ) );
+                        ReadCloseMark( reader );
+                        lastGoodPosition = stream.Position;
+                    }
+                }
+            }
+            catch ( Exception ex )
+            {
+                _trace.TraceError( "{0}", ex );
+                using ( var stream = new FileStream( _dataFileName, FileMode.Open, FileAccess.Write, FileShare.Delete ) )
+                    stream.SetLength( lastGoodPosition );
+                _trace.TraceInformation( "File was truncated at: {0}.", lastGoodPosition );
+            }
         }
 
         public CommandPage ReadCommandsFromEnd( CommandPage previous, int maxResults, TimeSpan maxDuration )
@@ -274,7 +306,30 @@ namespace wcmd.DataFiles
 
         private BinaryReader GetReader()
         {
-            var stream = new FileStream( _dataFileName, FileMode.OpenOrCreate, FileAccess.Read, FileShare.Delete );
+            FileStream stream;
+
+            var sw = Stopwatch.StartNew();
+            for ( ;; )
+            {
+                try
+                {
+                    stream = new FileStream( _dataFileName, FileMode.OpenOrCreate, FileAccess.Read, FileShare.Delete );
+                    break;
+                }
+                catch ( IOException ex )
+                {
+                    if ( (uint) ex.HResult == 0x80070020 && sw.ElapsedMilliseconds < 5000 )
+                    {
+                        _trace.TraceInformation( "File in use: {0}", _dataFileName );
+                        Thread.Sleep( 250 );
+                        continue;
+                    }
+
+                    _trace.TraceError( "{0}\r\nHResult: {1}\r\nDetails: {2}\r\n", ex.Message, ex.HResult, ex );
+                    throw;
+                }
+            }
+
             var reader = new BinaryReader( stream, Encoding.UTF8 );
             return reader;
         }

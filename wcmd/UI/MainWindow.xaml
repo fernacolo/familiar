@@ -4,23 +4,33 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="MainWindow" Height="164.108" Width="548" Loaded="Window_Loaded" WindowStyle="None">
-    <Grid>
-        <TabControl>
-            <TabItem Header="Command">
-                <RichTextBox x:Name="RtCommand" Margin="10,10,10,50" FontFamily="Consolas" AcceptsReturn="False"
-                             TextOptions.TextFormattingMode="Display" KeyUp="RtCommand_KeyUp" />
-            </TabItem>
-            <TabItem Header="Search">
-                <Grid>
-                    <TextBox x:Name="TbSearch" TextWrapping="Wrap" Text="" Margin="10,10,10,87" VerticalAlignment="Top"
-                             TextChanged="TextBox_TextChanged" Height="18" PreviewKeyDown="TbSearch_PreviewKeyDown"  >
+        Title="MainWindow" Height="164.108" Width="548" Loaded="Window_Loaded" WindowStyle="None"
+        FocusManager.FocusedElement="{Binding ElementName=RtCommand}">
+    <DockPanel>
+        <Menu DockPanel.Dock="Top" Height="20">
+            <MenuItem Header="_Search" Click="MenuItem_Click" />
+        </Menu>
+        <RichTextBox DockPanel.Dock="Top" x:Name="RtCommand" FontFamily="Consolas" AcceptsReturn="False"
+                     TextOptions.TextFormattingMode="Display" KeyUp="RtCommand_KeyUp" />
+    </DockPanel>
 
-                    </TextBox>
-                    <ListBox x:Name="LbSearchResults" Margin="10,28,10,10"/>
-                </Grid>
-            </TabItem>
-        </TabControl>
+    <!--Grid>
+        <RichTextBox x:Name="RtCommand" Margin="10,10,10,50" FontFamily="Consolas" AcceptsReturn="False"
+                     TextOptions.TextFormattingMode="Display" KeyUp="RtCommand_KeyUp" PreviewKeyUp="RtCommand_PreviewKeyUp" />
+        <Menu HorizontalAlignment="Left" Height="108" Margin="387,124,0,-76" VerticalAlignment="Top" Width="100"/>
+    </-->
+    <!--TabControl x:Name="TcMain">
+        <TabItem x:Name="TiCommand" Header="Command" >
+        </TabItem>
+        <TabItem x:Name="TiSearch" Header="Search">
+            <Grid>
+                <TextBox x:Name="TbSearch" TextWrapping="Wrap" Text="" Margin="10,10,10,87" VerticalAlignment="Top"
+                         TextChanged="TextBox_TextChanged" Height="18" PreviewKeyDown="TbSearch_PreviewKeyDown"  >
 
-    </Grid>
+                </TextBox>
+                <ListBox x:Name="LbSearchResults" Margin="10,28,10,10" KeyDown="LbSearchResults_KeyDown" MouseDoubleClick="LbSearchResults_MouseDoubleClick"/>
+            </Grid>
+        </TabItem>
+    </-->
+
 </Window>
