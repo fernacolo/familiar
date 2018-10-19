@@ -4,14 +4,17 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="MainWindow" Height="164.108" Width="548" Loaded="Window_Loaded" WindowStyle="None"
-        FocusManager.FocusedElement="{Binding ElementName=RtCommand}">
+        Title="MainWindow" Height="164.108" Width="548" WindowStyle="None" Loaded="Window_Loaded"
+        FocusManager.FocusedElement="{Binding ElementName=RtCommand}"
+        ShowInTaskbar="False">
     <DockPanel>
         <Menu DockPanel.Dock="Top" Height="20">
-            <MenuItem Header="_Search" Click="MenuItem_Click" />
+            <MenuItem Header="_Quit" Click="MiQuit_Click" />
+            <MenuItem Header="_Search" Click="MiSearch_Click" />
         </Menu>
         <RichTextBox DockPanel.Dock="Top" x:Name="RtCommand" FontFamily="Consolas" AcceptsReturn="False"
-                     TextOptions.TextFormattingMode="Display" KeyUp="RtCommand_KeyUp" />
+                     TextOptions.TextFormattingMode="Display" KeyDown="RtCommand_KeyDown"
+                     PreviewKeyDown="RtCommand_PreviewKeyDown" />
     </DockPanel>
 
     <!--Grid>

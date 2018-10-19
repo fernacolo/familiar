@@ -8,6 +8,8 @@ namespace wcmd.DataFiles
     {
         private readonly IDataFile _inner;
         private readonly List<DataFileRecord> _items;
+        private readonly CachedStoredCommand _bof;
+        private readonly CachedStoredCommand _eof;
 
         public string FileName => _inner.FileName;
 
@@ -23,7 +25,14 @@ namespace wcmd.DataFiles
                 if ( record.Type == DataFileRecord.CommandV1 )
                     _items.Insert( 0, record );
             }
+
+            _bof = new CachedStoredCommand( -1, null );
+            _eof = new CachedStoredCommand( int.MaxValue, null );
         }
+
+        public IStoredCommand Bof => _bof;
+
+        public IStoredCommand Eof => _eof;
 
         public CommandPage ReadCommandsFromEnd( CommandPage previous, int maxResults, TimeSpan maxDuration )
         {
@@ -48,7 +57,7 @@ namespace wcmd.DataFiles
             }
         }
 
-        public void Write( DateTime whenExecuted, string command )
+        public IStoredCommand Write( DateTime whenExecuted, string command )
         {
             _inner.Write( whenExecuted, command );
 
@@ -62,7 +71,69 @@ namespace wcmd.DataFiles
             lock ( _items )
             {
                 _items.Add( record );
+                return new CachedStoredCommand( _items.Count - 1, command );
             }
         }
+
+        public IStoredCommand GetPrevious( IStoredCommand item )
+        {
+            if ( item == null )
+                throw new ArgumentNullException( nameof( item ) );
+            if ( item == _bof )
+                throw new ArgumentException( "Cannot read before BOF." );
+
+            var bm = (CachedStoredCommand) item;
+            if ( bm.ItemIndex == 0 )
+                return _bof;
+
+            lock ( _items )
+            {
+                var currentIndex = item == _eof ? _items.Count : bm.ItemIndex;
+                return ReadAtIndex( currentIndex - 1 );
+            }
+        }
+
+        public IStoredCommand GetNext( IStoredCommand item )
+        {
+            if ( item == null )
+                throw new ArgumentNullException( nameof( item ) );
+            if ( item == _eof )
+                throw new ArgumentException( "Cannot read after EOF." );
+
+            var bm = (CachedStoredCommand) item;
+
+            lock ( _items )
+            {
+                var lastIndex = _items.Count - 1;
+                if ( bm.ItemIndex == lastIndex )
+                    return _eof;
+
+                return ReadAtIndex( bm.ItemIndex + 1 );
+            }
+        }
+
+        private IStoredCommand ReadAtIndex( int index )
+        {
+            lock ( _items )
+            {
+                var item = _items[index];
+                return new CachedStoredCommand( index, item.Command );
+            }
+        }
+    }
+
+    internal class CachedStoredCommand : IStoredCommand
+    {
+        public CachedStoredCommand( int itemIndex, string command )
+        {
+            ItemIndex = itemIndex;
+            Command = command;
+        }
+
+        public DateTime WhenExecuted => throw new NotImplementedException();
+
+        public string Command { get; }
+
+        public int ItemIndex { get; }
     }
 }

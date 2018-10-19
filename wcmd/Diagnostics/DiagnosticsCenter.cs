@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.Threading;
 
 namespace wcmd.Diagnostics
@@ -32,7 +33,7 @@ namespace wcmd.Diagnostics
 
     public sealed class LogViewTraceListener : TraceListener
     {
-        private static TraceListener _actual = new DefaultTraceListener();
+        private static TraceListener _actual = new DebugTraceListener();
 
         public static TraceListener Actual
         {
@@ -86,6 +87,32 @@ namespace wcmd.Diagnostics
         public override void TraceTransfer( TraceEventCache eventCache, string source, int id, string message, Guid relatedActivityId )
         {
             throw new InvalidOperationException();
+        }
+    }
+
+    internal class DebugTraceListener : TraceListener
+    {
+        public override void Write( string message )
+        {
+            throw new InvalidOperationException();
+        }
+
+        public override void WriteLine( string message )
+        {
+            throw new InvalidOperationException();
+        }
+
+        public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string message )
+        {
+            Debug.WriteLine( "[{0}] {1}: {2}", source, eventType, message );
+        }
+
+        public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string format, params object[] args )
+        {
+            var message = format;
+            if ( args != null && args.Length > 0 )
+                message = string.Format( CultureInfo.InvariantCulture, format, args );
+            TraceEvent( eventCache, source, eventType, id, message );
         }
     }
 }

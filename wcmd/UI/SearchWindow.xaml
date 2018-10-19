@@ -4,8 +4,10 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:wcmd.UI"
+        xmlns:dataFiles="clr-namespace:wcmd.DataFiles"
         mc:Ignorable="d"
-        Title="Search History" Height="450" Width="800" FocusManager.FocusedElement="{Binding ElementName=TbSearch}">
+        Title="Search History" Height="450" Width="800" FocusManager.FocusedElement="{Binding ElementName=TbSearch}"
+        Loaded="OnLoaded">
     <Window.CommandBindings>
         <CommandBinding Command="Close" Executed="CloseAndReturnNull" />
     </Window.CommandBindings>
@@ -18,7 +20,15 @@
             <TextBox x:Name="TbSearch" TextWrapping="Wrap" Text="" TextChanged="TbSearch_TextChanged" Height="18"
                      PreviewKeyDown="TbSearch_PreviewKeyDown" />
         </DockPanel>
-        <ListBox x:Name="LbSearchResults" KeyDown="LbSearchResults_KeyDown"
-                 MouseDoubleClick="LbSearchResults_MouseDoubleClick" />
+        <ListBox x:Name="LbSearchResults"
+                 ItemsSource="{Binding CurrentFindings}"
+                 KeyDown="LbSearchResults_KeyDown"
+                 MouseDoubleClick="LbSearchResults_MouseDoubleClick">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="dataFiles:IStoredCommand">
+                    <TextBlock Text="{Binding Path=Command}" />
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
     </DockPanel>
 </Window>

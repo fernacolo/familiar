@@ -6,7 +6,7 @@ using wcmd.Diagnostics;
 
 namespace wcmd.DataFiles
 {
-    internal sealed class ReplicationJob : IDisposable
+    internal sealed class ReplicationJob
     {
         private readonly TraceSource _trace;
         private readonly DirectoryInfo _source;
@@ -14,23 +14,16 @@ namespace wcmd.DataFiles
         private readonly Thread _thread;
         private readonly TimeSpan _timeBetweenPolls;
         private readonly Func<string, bool> _accept;
-        private int _aborted;
 
         public ReplicationJob( string jobName, DirectoryInfo source, DirectoryInfo destination, TimeSpan timeBetweenPolls, Func<string, bool> accept )
         {
-            _trace = DiagnosticsCenter.GetTraceSource( jobName );
+            _trace = DiagnosticsCenter.GetTraceSource( this, jobName );
             _source = source;
             _destination = destination;
             _thread = new Thread( Run );
+            _thread.IsBackground = true;
             _timeBetweenPolls = timeBetweenPolls;
             _accept = accept;
-        }
-
-        public bool Aborted => Interlocked.CompareExchange( ref _aborted, 0, -1 ) == 1;
-
-        public void Dispose()
-        {
-            Interlocked.Exchange( ref _aborted, 1 );
         }
 
         public void Start()
@@ -46,15 +39,11 @@ namespace wcmd.DataFiles
                 {
                     foreach ( var sourceFile in _source.GetFiles( "*.dat" ) )
                     {
-                        if ( Aborted )
-                            return;
                         if ( !_accept( sourceFile.Name ) )
                             continue;
                         CopyOrUpdate( sourceFile );
                     }
 
-                    if ( Aborted )
-                        return;
                     Thread.Sleep( _timeBetweenPolls );
                 }
             }

@@ -1,17 +1,17 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Forms;
 using System.Windows.Input;
+using System.Windows.Threading;
 using wcmd.DataFiles;
 using wcmd.Diagnostics;
 using wcmd.Native;
 using wcmd.Sessions;
+using Application = System.Windows.Application;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
-using MessageBox = System.Windows.MessageBox;
 
 // ReSharper disable IdentifierTypo
 
@@ -23,26 +23,35 @@ namespace wcmd.UI
     public partial class MainWindow
     {
         private readonly TraceSource _trace;
+        private readonly Process _parentProcess;
         private readonly Thread _parentProcessObserver;
         private readonly Thread _consoleWindowObserver;
 
-        private Process _parentProcess;
-
         private CachedDataFile _dataFile;
+        private IStoredCommand _storedCommand;
         private Searcher _searcher;
         private ReplicationJob _inboundMonitor;
         private ReplicationJob _outboundMonitor;
 
-        public MainWindow()
+        public MainWindow( int parentPid )
         {
             // Safe initializations. Do not put anything here that can throw an exception.
             // Defer to loaded.
 
             _trace = DiagnosticsCenter.GetTraceSource( this );
 
+            _parentProcess = Process.GetProcessById( parentPid );
             _parentProcessObserver = new Thread( ParentProcessObserver );
+            _parentProcessObserver.IsBackground = true;
 
             _consoleWindowObserver = new Thread( ConsoleWindowObserver );
+            // Set priority a bit higher than normal so this thread get cycles when our app is not active.
+            _consoleWindowObserver.Priority = ThreadPriority.AboveNormal;
+            _consoleWindowObserver.IsBackground = true;
+
+            InitializeComponent();
+
+            _trace.TraceInformation( "Main window object created." );
         }
 
         private void Window_Loaded( object sender, RoutedEventArgs e )
@@ -50,37 +59,9 @@ namespace wcmd.UI
             _trace.TraceInformation( "Reading configuration..." );
             var config = Configuration.LoadDefault() ?? Configuration.CreateDefault();
 
-            //var logFileName = Path.Combine( config.LocalDbDirectory.FullName, $"log-{DateTime.Now:yyyy-MM-dd,HHmm}.txt" );
-            //_trace.TraceInformation( "Log file: {0}", logFileName );
-            //var stream = new FileStream( logFileName, FileMode.Append, FileAccess.Write, FileShare.Read | FileShare.Delete, 1, false );
-            //LogViewTraceListener.Actual = new TextWriterTraceListener( stream );
-
-            smPROCESS_BASIC_INFORMATION processBasicInformation = new smPROCESS_BASIC_INFORMATION();
-            var result = Ntdll.NtQueryInformationProcess( Process.GetCurrentProcess().Handle, Ntdll.ProcessBasicInformation, ref processBasicInformation, Marshal.SizeOf( processBasicInformation ), out var returnLength );
-            _trace.TraceInformation( "{0} returned {1}", nameof( Ntdll.NtQueryInformationProcess ), result );
-
-            var parentPid = processBasicInformation.InheritedFromUniqueProcessId.ToInt32();
-            _trace.TraceInformation( "Parent PID: {0}", parentPid );
-
-            _parentProcess = Process.GetProcessById( parentPid );
-
-            var args = Environment.GetCommandLineArgs();
-            for ( var i = 0; i < args.Length; ++i )
-                _trace.TraceInformation( "args[{0}]: {1}", i, args[i] );
-
-            var attached = Kernel32.AttachConsole( (uint) parentPid );
-            _trace.TraceInformation( "{0} returned {1}", nameof( Kernel32.AttachConsole ), attached );
-
-            var hwndConsole = Kernel32.GetConsoleWindow();
-            if ( hwndConsole == IntPtr.Zero )
-            {
-                _trace.TraceWarning( "No console window detected." );
-                MessageBox.Show( "Console not detected.\r\nPlease, start the familiar from Command Prompt or Powershell.", "Familiar Notification", MessageBoxButton.OK, MessageBoxImage.Information );
-                Environment.Exit( ExitCodes.ConsoleNotDetected );
-            }
-
             _dataFile = new CachedDataFile( new DataFile( config ) );
             //_dataFile.DumpRecords();
+            _storedCommand = _dataFile.Eof;
             _searcher = new Searcher( _dataFile );
 
             if ( config.SharedDirectory != null )
@@ -100,24 +81,6 @@ namespace wcmd.UI
             _parentProcessObserver.Start();
             _consoleWindowObserver.Start();
 
-            /*
-            var startInfo = new ProcessStartInfo();
-            //startInfo.FileName = "cmd.exe";
-            startInfo.FileName = "powershell.exe";
-            //startInfo.Arguments = string.Format(CultureInfo.InvariantCulture, "/d /c {0}", commandLine);
-            startInfo.UseShellExecute = false;
-            //startInfo.RedirectStandardInput = true;
-            //startInfo.RedirectStandardOutput = true;
-            //startInfo.RedirectStandardError = true;
-            startInfo.CreateNoWindow = false;
-            _process = Process.Start( startInfo );
-            _parentProcessObserver = new Thread( ParentProcessObserver );
-            _parentProcessObserver.Start();
-            //process.StandardInput.WriteLine( @"cd \repo\ad\ip\azkms" );
-            //process.StandardInput.WriteLine( "git show HEAD" );
-            RtCommand.Focus();
-            */
-
             _trace.TraceInformation( "Initialization finished." );
         }
 
@@ -136,7 +99,7 @@ namespace wcmd.UI
             _parentProcess.WaitForExit();
             _consoleWindowObserver.Abort();
             _consoleWindowObserver.Join();
-            Environment.Exit( 0 );
+            Dispatcher.Invoke( () => { Application.Current.Shutdown( 0 ); } );
         }
 
         /// <summary>
@@ -152,14 +115,9 @@ namespace wcmd.UI
         {
             try
             {
-                // Last detected console position and companion lock object.
-                var lastPosition = new RECT();
-                var lastIsIconic = false;
-                var lastPositionLock = new object();
-
                 // Last time we detected a change in console position.
                 // Initialize with now to update immediately.
-                var lastChange = DateTimeOffset.UtcNow;
+                var lastChange = DateTimeOffset.UtcNow.Ticks;
 
                 // If there is no change in this time, we consider idle. Use large value to avoid burning user's CPU and battery.
                 var idleTime = TimeSpan.FromSeconds( 1 );
@@ -167,77 +125,71 @@ namespace wcmd.UI
                 // If there is no change in this time, we consider "possibly idle". Use smaller than idle time to be responsive.
                 var possiblyIdleTime = TimeSpan.FromMilliseconds( 250 );
 
+                // A flag that tells we need to activate ourselves when the console gets activated.
+                var activateWithConsole = false;
+
                 while ( true )
                 {
-                    var timeSinceLastChange = DateTimeOffset.UtcNow - lastChange;
+                    var now = DateTimeOffset.UtcNow.Ticks;
+                    var timeSinceLastChange = TimeSpan.FromTicks( now - Interlocked.Add( ref lastChange, 0 ) );
 
                     if ( timeSinceLastChange >= idleTime )
+                    {
+                        //_trace.TraceInformation( "Idle detected." );
                         Thread.Sleep( idleTime );
+                    }
                     else if ( timeSinceLastChange >= possiblyIdleTime )
+                    {
+                        //_trace.TraceInformation( "Possibly idle detected." );
                         Thread.Sleep( possiblyIdleTime );
+                    }
                     else
+                    {
                         // Since we are not possibly idle, just yield.
                         // This causes immediate redraws as the user resizes, making a responsive UI.
+                        //_trace.TraceInformation( "Not idle detected." );
                         Thread.Yield();
-
-                    var hwndConsole = Kernel32.GetConsoleWindow();
-                    if ( hwndConsole == IntPtr.Zero )
-                        continue;
-
-                    // Detect console position and iconic state.
-                    if ( !User32.GetWindowRect( hwndConsole, out var rect ) )
-                        _trace.TraceError( "Unable to determine console window pos." );
-
-                    var isIconic = User32.IsIconic( hwndConsole );
-
-                    // Update position, if needed.
-                    lock ( lastPositionLock )
-                    {
-                        if ( rect == lastPosition && isIconic == lastIsIconic )
-                        {
-                            // No change means wakeup was not needed. Continue (go back to sleep).
-                            //_trace.TraceInformation( "Console window position didn't change." );
-                            continue;
-                        }
-
-                        // Record what we are seeing now.
-                        lastPosition = rect;
-                        lastIsIconic = isIconic;
-                        lastChange = DateTimeOffset.UtcNow;
                     }
 
-                    Dispatcher.Invoke( () =>
-                    {
-                        // Make sure the rect still represent up-to-date position.
-                        lock ( lastPositionLock )
+                    //_trace.TraceInformation( "Updating tool window position..." );
+
+                    Dispatcher.Invoke(
+                        () =>
                         {
-                            // ReSharper disable AccessToModifiedClosure
-                            if ( rect != lastPosition || isIconic != lastIsIconic )
+                            var changeTime = DateTimeOffset.UtcNow.Ticks;
+
+                            var hwndConsole = Kernel32.GetConsoleWindow();
+                            if ( hwndConsole == IntPtr.Zero )
                             {
-                                // Position changed again after this event got triggered.
-                                // This means another event was generated. Ignore this one to avoid flickering.
-                                _trace.TraceInformation( "Ignored position change notification." );
+                                _trace.TraceError( "Unable to get console window." );
                                 return;
                             }
-                            // ReSharper restore AccessToModifiedClosure
-                        }
 
-                        if ( isIconic )
-                        {
-                            WindowState = WindowState.Minimized;
-                            _trace.TraceInformation( "Minimized." );
-                        }
-                        else
-                        {
-                            // If the user shakes the console window, OS will minimize everything (including the tool window).
-                            // Therefore, we must restore ourselves.
-                            if ( WindowState == WindowState.Minimized )
+                            // If the console is iconic, iconize ourselves.
+                            if ( User32.IsIconic( hwndConsole ) )
+                            {
+                                WindowState = WindowState.Minimized;
+                                Interlocked.Exchange( ref lastChange, changeTime );
+                                return;
+                            }
+
+                            // Otherwise get out of iconic state.
+                            if ( WindowState != WindowState.Normal )
+                            {
                                 WindowState = WindowState.Normal;
+                                Interlocked.Exchange( ref lastChange, changeTime );
+                            }
+
+                            if ( !User32.GetWindowRect( hwndConsole, out var rect ) )
+                            {
+                                _trace.TraceError( "Unable to determine console window pos." );
+                                return;
+                            }
 
                             var topLeft = new Point( rect.Left, rect.Top );
                             var size = new Point( rect.Right - rect.Left + 1, rect.Bottom - rect.Top + 1 );
 
-                            _trace.TraceInformation( "Console Position: ({0},{1}) Size: {2}x{3}", topLeft.X, topLeft.Y, size.X, size.Y );
+                            //_trace.TraceInformation( "Console Position: ({0},{1}) Size: {2}x{3}", topLeft.X, topLeft.Y, size.X, size.Y );
 
                             var compositionTarget = PresentationSource.FromVisual( this )?.CompositionTarget;
                             if ( compositionTarget != null )
@@ -245,17 +197,43 @@ namespace wcmd.UI
                                 // Transform device coords to window coords.
                                 topLeft = compositionTarget.TransformFromDevice.Transform( topLeft );
                                 size = compositionTarget.TransformFromDevice.Transform( size );
-                                _trace.TraceInformation( "After transform, console Position: ({0},{1}) Size: {2}x{3}", topLeft.X, topLeft.Y, size.X, size.Y );
+                                //_trace.TraceInformation( "After transform, console Position: ({0},{1}) Size: {2}x{3}", topLeft.X, topLeft.Y, size.X, size.Y );
                             }
 
-                            // Put the tool window below the console.
-                            Left = topLeft.X;
-                            Top = topLeft.Y + size.Y;
-                            Width = size.X;
+                            var newLeft = topLeft.X;
+                            var newTop = topLeft.Y + size.Y;
+                            var newWidth = size.X;
 
-                            _trace.TraceInformation( "Position: ({0},{1}) Size: {2}x{3}", rect.Left, rect.Top, rect.Width, rect.Height );
-                        }
-                    } );
+                            if ( Left != newLeft || Top != newTop || Width != newWidth )
+                            {
+                                Left = newLeft;
+                                Top = newTop;
+                                Width = newWidth;
+                                Interlocked.Exchange( ref lastChange, changeTime );
+                            }
+
+                            // If we are active, we know that the console is not. This is a final state.
+                            if ( IsActive )
+                                return;
+
+                            var hwndTop = User32.GetForegroundWindow();
+                            if ( hwndTop != hwndConsole )
+                            {
+                                // The console is not the foreground window. We need to activate ourselves when the console becomes the foreground window.
+                                activateWithConsole = true;
+                                // For now there is nothing to do. The focus is on another application.
+                                return;
+                            }
+
+                            // The console is the foreground window. Check if we need to activate ourselves.
+                            if ( activateWithConsole )
+                            {
+                                Activate();
+                                activateWithConsole = false;
+                                Interlocked.Exchange( ref lastChange, changeTime );
+                            }
+                        }, DispatcherPriority.Send
+                    );
                 }
             }
             catch ( ThreadAbortException )
@@ -267,47 +245,74 @@ namespace wcmd.UI
             }
         }
 
-        private void BtRun_Click( object sender, RoutedEventArgs e )
-        {
-            var document = RtCommand.Document;
-            var textRange = new TextRange( document.ContentStart, document.ContentEnd );
-            var text = textRange.Text;
-
-            var iCr = text.IndexOf( '\r' );
-            if ( iCr < 0 ) iCr = text.Length;
-
-            var iLf = text.IndexOf( '\n' );
-            if ( iLf < 0 ) iLf = text.Length;
-
-            var len = Math.Min( iCr, iLf );
-            text = text.Substring( 0, len ) + "\r";
-
-            _trace.TraceInformation( "Writing \"{0}\"...", text );
-            User32.SetForegroundWindow( Kernel32.GetConsoleWindow() );
-            var now = DateTime.Now;
-            SendKeys.SendWait( text );
-            Activate();
-            document.Blocks.Clear();
-            _dataFile.Write( now, text );
-        }
-
-        private void RtCommand_KeyUp( object sender, KeyEventArgs e )
+        private void RtCommand_KeyDown( object sender, KeyEventArgs e )
         {
             if ( e.Key == Key.Enter )
-                BtRun_Click( this, e );
+            {
+                e.Handled = true;
+                ExecuteCommand();
+                return;
+            }
         }
 
-        private void MenuItem_Click( object sender, RoutedEventArgs e )
+        private void RtCommand_PreviewKeyDown( object sender, KeyEventArgs e )
+        {
+            if ( e.Key == Key.Up && _storedCommand != _dataFile.Bof )
+            {
+                var previous = _dataFile.GetPrevious( _storedCommand );
+                SetCommand( previous );
+                e.Handled = true;
+            }
+
+            if ( e.Key == Key.Down && _storedCommand != _dataFile.Eof )
+            {
+                var next = _dataFile.GetNext( _storedCommand );
+                SetCommand( next );
+                e.Handled = true;
+            }
+        }
+
+        private void MiQuit_Click( object sender, RoutedEventArgs e )
+        {
+            Close();
+        }
+
+        private void MiSearch_Click( object sender, RoutedEventArgs e )
         {
             var dialog = new SearchWindow( _searcher );
             dialog.Owner = this;
             dialog.ShowDialog();
             var selectedCommand = dialog.SelectedCommand;
             if ( selectedCommand != null )
+                SetCommand( dialog.SelectedCommand );
+        }
+
+        private void SetCommand( IStoredCommand item )
+        {
+            if ( item != _dataFile.Bof && item != _dataFile.Eof )
             {
                 RtCommand.Document.Blocks.Clear();
-                RtCommand.Document.Blocks.Add( new Paragraph( new Run( dialog.SelectedCommand ) ) );
+                var text = item.Command.TrimEnd( '\r', '\n', ' ', '\t' );
+                RtCommand.Document.Blocks.Add( new Paragraph( new Run( text ) ) );
+                RtCommand.CaretPosition = RtCommand.CaretPosition.DocumentStart;
             }
+
+            _storedCommand = item;
+        }
+
+        private void ExecuteCommand()
+        {
+            var document = RtCommand.Document;
+            var textRange = new TextRange( document.ContentStart, document.ContentEnd );
+            var text = textRange.Text;
+            text = text.TrimEnd( '\r', '\n', ' ', '\t' );
+            _trace.TraceInformation( "Writing \"{0}\"...", text );
+            User32.SetForegroundWindow( Kernel32.GetConsoleWindow() );
+            var now = DateTime.Now;
+            SendKeys.SendWait( text + "\r" );
+            Activate();
+            document.Blocks.Clear();
+            _storedCommand = _dataFile.Write( now, text );
         }
 
         /*
@@ -334,5 +339,6 @@ namespace wcmd.UI
     internal class ExitCodes
     {
         public static readonly int ConsoleNotDetected = 1;
+        public static readonly int PreviousInstanceDetected = 2;
     }
 }

@@ -21,10 +21,11 @@ namespace wcmd
         public Searcher( IDataFile dataFile )
         {
             _trace = DiagnosticsCenter.GetTraceSource( this );
-            _dataFile = new CachedDataFile( dataFile );
+            _dataFile = dataFile;
             _newRequest = new SemaphoreSlim( 0, int.MaxValue );
             _requests = new ConcurrentQueue<Request>();
             _thread = new Thread( BackgroundThread );
+            _thread.IsBackground = true;
             _thread.Start();
         }
 
@@ -73,7 +74,7 @@ namespace wcmd
             var currentMatcher = (Matcher) null;
             var currentResults = new List<Command>();
             var currentCommands = new HashSet<string>();
-            var lastPage = (CommandPage) null;
+            var lastRead = _dataFile.Eof;
             var searchCallback = (Action) null;
 
             for ( ;; )
@@ -119,7 +120,7 @@ namespace wcmd
                             // The new search text does not contain the previous one. We need to start from zero.
                             currentResults.Clear();
                             currentCommands.Clear();
-                            lastPage = null;
+                            lastRead = _dataFile.Eof;
                             changed = true;
                         }
 
@@ -137,15 +138,19 @@ namespace wcmd
                             // We can't produce more results.
                             break;
 
-                        if ( lastPage?.Offset == 0L )
-                            // We have iterated over all known commands.
+                        if ( lastRead == _dataFile.Bof )
+                            // We've already read through entire file.
                             break;
 
-                        lastPage = _dataFile.ReadCommandsFromEnd( lastPage, _maxResults - currentResults.Count, TimeSpan.FromMilliseconds( 200 ) );
                         var changed = false;
-                        foreach ( var commandRecord in lastPage.Items )
+                        var sw = Stopwatch.StartNew();
+                        do
                         {
-                            var command = new Command( commandRecord );
+                            lastRead = _dataFile.GetPrevious( lastRead );
+                            if ( lastRead == _dataFile.Bof )
+                                break;
+
+                            var command = new Command( lastRead );
                             if ( currentMatcher.IsMatch( command ) && !currentCommands.Contains( command.Original ) )
                             {
                                 currentResults.Add( command );
@@ -154,7 +159,7 @@ namespace wcmd
                                 if ( currentResults.Count >= _maxResults )
                                     break;
                             }
-                        }
+                        } while ( sw.ElapsedMilliseconds <= 200 );
 
                         CompleteSearch( changed, currentMatcher, currentResults, searchCallback );
                         break;
@@ -178,7 +183,11 @@ namespace wcmd
             if ( changed )
             {
                 _trace.TraceInformation( "New findings: {0}, {1} items", matcher.Term, foundItems.Count );
-                var findings = new Findings( matcher, foundItems );
+                var items = new List<IStoredCommand>( foundItems.Count );
+                foreach ( var command in foundItems )
+                    items.Add( command.Stored );
+
+                var findings = new Findings( matcher, items );
                 Interlocked.Exchange( ref _findings, findings );
                 notifyAction?.Invoke();
             }

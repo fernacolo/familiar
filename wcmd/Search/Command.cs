@@ -5,23 +5,21 @@ namespace wcmd
 {
     public sealed class Command
     {
-        private readonly string _original;
-        private readonly DateTime _whenExecuted;
+        private readonly IStoredCommand _stored;
         private string _allLowers;
 
-        public Command( DataFileRecord record )
+        public Command( IStoredCommand stored )
         {
-            _original = record.Command;
-            _whenExecuted = record.WhenExecuted;
+            _stored = stored ?? throw new ArgumentNullException( nameof( stored ) );
         }
 
         public void ComputeAllLowers()
         {
-            _allLowers = _original.ToLowerInvariant();
+            _allLowers = Original;
         }
 
-        public string Original => _original;
+        public IStoredCommand Stored => _stored;
+        public string Original => _stored.Command;
         public string AllLowers => _allLowers;
-        public DateTime WhenExecuted => _whenExecuted;
     }
 }

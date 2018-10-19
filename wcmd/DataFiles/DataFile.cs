@@ -8,7 +8,7 @@ using wcmd.Sessions;
 
 namespace wcmd.DataFiles
 {
-    internal sealed class DataFile: IDataFile
+    internal sealed class DataFile : IDataFile
     {
         private readonly TraceSource _trace;
         private readonly string _dataFileName;
@@ -50,6 +50,10 @@ namespace wcmd.DataFiles
             }
         }
 
+        public IStoredCommand Bof => throw new NotImplementedException();
+
+        public IStoredCommand Eof => throw new NotImplementedException();
+
         public CommandPage ReadCommandsFromEnd( CommandPage previous, int maxResults, TimeSpan maxDuration )
         {
             var result = new CommandPage();
@@ -85,7 +89,7 @@ namespace wcmd.DataFiles
             return result;
         }
 
-        public void Write( DateTime whenExecuted, string command )
+        public IStoredCommand Write( DateTime whenExecuted, string command )
         {
             var record = new DataFileRecord
             {
@@ -94,20 +98,23 @@ namespace wcmd.DataFiles
                 Command = command
             };
 
-            WriteRecord( record );
+            var position = WriteRecord( record );
+            return new DataFileBookmark( position, command );
         }
 
-        private void WriteRecord( DataFileRecord record )
+        private long WriteRecord( DataFileRecord record )
         {
             var dataSize = record.DataSize;
             if ( dataSize < 1 || dataSize > ushort.MaxValue )
                 throw new InvalidOperationException( $"Invalid record data size: {dataSize}" );
 
+            long position;
             var size = (ushort) dataSize;
 
             using ( var writer = GetWriterForAppend() )
             {
                 var stream = writer.BaseStream;
+                position = stream.Position;
 
                 WriteOpenMark( writer, size );
                 var dataOffset = stream.Position;
@@ -120,12 +127,24 @@ namespace wcmd.DataFiles
                 WriteZeros( writer, Align( writtenSize ) - writtenSize );
                 WriteCloseMark( writer, size );
             }
+
+            return position;
         }
 
         private void WriteRecordData( BinaryWriter writer, DataFileRecord record )
         {
             AssertAligned( writer );
             record.WriteTo( writer );
+        }
+
+        public IStoredCommand GetPrevious( IStoredCommand item )
+        {
+            throw new NotImplementedException();
+        }
+
+        public IStoredCommand GetNext( IStoredCommand item )
+        {
+            throw new NotImplementedException();
         }
 
         /// <summary>
@@ -333,5 +352,20 @@ namespace wcmd.DataFiles
             var reader = new BinaryReader( stream, Encoding.UTF8 );
             return reader;
         }
+    }
+
+    internal class DataFileBookmark : IStoredCommand
+    {
+        public DataFileBookmark( long position, string command )
+        {
+            Position = position;
+            Command = command;
+        }
+
+        public DateTime WhenExecuted => throw new NotImplementedException();
+
+        public string Command { get; }
+
+        public long Position { get; }
     }
 }

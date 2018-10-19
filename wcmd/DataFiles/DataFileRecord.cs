@@ -53,7 +53,7 @@ namespace wcmd.DataFiles
             {
                 case CommandV1:
                     WhenExecuted = ReadDateTime( reader );
-                    Command = reader.ReadString();
+                    Command = reader.ReadString().TrimEnd( '\r', '\n', ' ', '\t' );
                     break;
 
                 default:

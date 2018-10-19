@@ -111,6 +111,9 @@ namespace wcmd.Native
         [DllImport( "user32", SetLastError = true )]
         public static extern bool ShowWindow( IntPtr hWnd, ShowWindowCommands nCmdShow );
 
+        [DllImport( "user32", SetLastError = true )]
+        public static extern IntPtr GetForegroundWindow();
+
         [DllImport( "user32" )]
         public static extern bool SetForegroundWindow( IntPtr hWnd );
 

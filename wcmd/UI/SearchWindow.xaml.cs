@@ -1,8 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using wcmd.DataFiles;
 using wcmd.Diagnostics;
 
 namespace wcmd.UI
@@ -20,10 +23,19 @@ namespace wcmd.UI
         {
             _trace = DiagnosticsCenter.GetTraceSource( this );
             _searcher = searcher ?? throw new ArgumentNullException( nameof( searcher ) );
+            CurrentFindings = new ObservableCollection<IStoredCommand>();
+            DataContext = this;
             InitializeComponent();
         }
 
-        public string SelectedCommand { get; private set; }
+        public ObservableCollection<IStoredCommand> CurrentFindings { get; }
+
+        public IStoredCommand SelectedCommand { get; private set; }
+
+        private void OnLoaded( object sender, RoutedEventArgs e )
+        {
+            TbSearch_TextChanged( sender, new TextChangedEventArgs( e.RoutedEvent, UndoAction.None ) );
+        }
 
         private void FindingsChanged()
         {
@@ -32,10 +44,11 @@ namespace wcmd.UI
                 return;
 
             _trace.TraceInformation( "Detected new findings" );
-            LbSearchResults.Items.Clear();
+
+            CurrentFindings.Clear();
             if ( findings != null )
                 foreach ( var item in findings.FoundItems )
-                    LbSearchResults.Items.Add( new ListBoxItem {Content = item.Original, Height = 20} );
+                    CurrentFindings.Add( item );
 
             _lastFindings = findings;
         }
@@ -81,13 +94,13 @@ namespace wcmd.UI
             CloseAndReturnSelection( sender, e );
         }
 
-        private string GetSelected()
+        private IStoredCommand GetSelected()
         {
             var idx = LbSearchResults.SelectedIndex;
             var count = LbSearchResults.Items.Count;
             if ( idx < 0 || idx >= count )
                 return null;
-            return (string) ((ListBoxItem) LbSearchResults.Items[idx]).Content;
+            return (IStoredCommand) LbSearchResults.Items[idx];
         }
 
         private void MoveSelected( int move )
@@ -103,6 +116,7 @@ namespace wcmd.UI
 
         private void CloseAndReturnSelection( object sender, RoutedEventArgs e )
         {
+            e.Handled = true;
             SelectedCommand = GetSelected();
             _searcher.CancelSearch();
             Close();
