@@ -15,7 +15,7 @@ namespace wcmd
 
         public void ComputeAllLowers()
         {
-            _allLowers = Original;
+            _allLowers = Original.ToLowerInvariant();
         }
 
         public IStoredCommand Stored => _stored;

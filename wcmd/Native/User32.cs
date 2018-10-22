@@ -112,6 +112,9 @@ namespace wcmd.Native
         public static extern bool ShowWindow( IntPtr hWnd, ShowWindowCommands nCmdShow );
 
         [DllImport( "user32", SetLastError = true )]
+        public static extern void BringWindowToTop( IntPtr hWnd );
+
+        [DllImport( "user32", SetLastError = true )]
         public static extern IntPtr GetForegroundWindow();
 
         [DllImport( "user32" )]

@@ -98,6 +98,8 @@ namespace wcmd
 
                         if ( currentMatcher != null && newMatcher.Contains( currentMatcher ) )
                         {
+                            _trace.TraceInformation( "New matcher ({0}) contains the old one ({1})", newMatcher, currentMatcher );
+
                             // The new search text contains the previous one (i.e. previous = abc, new = abcd).
                             // We don't need to start search from zero.
 
@@ -108,6 +110,7 @@ namespace wcmd
                                 var currentResult = currentResults[i];
                                 if ( !newMatcher.IsMatch( currentResult ) )
                                 {
+                                    _trace.TraceInformation( "Removing item {0} from findings ({1})", i, currentResult.Original );
                                     currentResults.RemoveAt( i );
                                     currentCommands.Remove( currentResult.Original );
                                 }
@@ -151,7 +154,10 @@ namespace wcmd
                                 break;
 
                             var command = new Command( lastRead );
-                            if ( currentMatcher.IsMatch( command ) && !currentCommands.Contains( command.Original ) )
+                            var isMatch = currentMatcher.IsMatch( command );
+                            var contains = currentCommands.Contains( command.Original );
+
+                            if ( isMatch && !contains )
                             {
                                 currentResults.Add( command );
                                 currentCommands.Add( command.Original );
@@ -159,6 +165,8 @@ namespace wcmd
                                 if ( currentResults.Count >= _maxResults )
                                     break;
                             }
+                            else
+                                _trace.TraceInformation( "Not adding item to findings. isMatch: {0}, contains: {1}. ({2})", isMatch, contains, command.Original );
                         } while ( sw.ElapsedMilliseconds <= 200 );
 
                         CompleteSearch( changed, currentMatcher, currentResults, searchCallback );

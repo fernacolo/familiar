@@ -9,6 +9,11 @@
             _searchText = searchText.ToLowerInvariant();
         }
 
+        public override string ToString()
+        {
+            return _searchText;
+        }
+
         public string Term => _searchText;
 
         public bool Contains( Matcher other )

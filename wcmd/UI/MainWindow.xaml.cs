@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Text;
 using System.Threading;
 using System.Windows;
 using System.Windows.Documents;
@@ -12,6 +13,7 @@ using wcmd.Native;
 using wcmd.Sessions;
 using Application = System.Windows.Application;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MessageBox = System.Windows.MessageBox;
 
 // ReSharper disable IdentifierTypo
 
@@ -27,7 +29,8 @@ namespace wcmd.UI
         private readonly Thread _parentProcessObserver;
         private readonly Thread _consoleWindowObserver;
 
-        private CachedDataFile _dataFile;
+        //private CachedDataFile _dataFile;
+        private IDataFile _dataFile;
         private IStoredCommand _storedCommand;
         private Searcher _searcher;
         private ReplicationJob _inboundMonitor;
@@ -39,6 +42,24 @@ namespace wcmd.UI
             // Defer to loaded.
 
             _trace = DiagnosticsCenter.GetTraceSource( this );
+
+            var culture = Thread.CurrentThread.CurrentCulture;
+            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.DisplayName ), culture.DisplayName );
+            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.EnglishName ), culture.EnglishName );
+            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.IsNeutralCulture ), culture.IsNeutralCulture );
+            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.Name ), culture.Name );
+            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.KeyboardLayoutId ), culture.KeyboardLayoutId );
+            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.NativeName ), culture.NativeName );
+            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.ThreeLetterISOLanguageName ), culture.ThreeLetterISOLanguageName );
+            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.ThreeLetterWindowsLanguageName ), culture.ThreeLetterWindowsLanguageName );
+            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.TwoLetterISOLanguageName ), culture.TwoLetterISOLanguageName );
+
+            var textInfo = culture.TextInfo;
+            _trace.TraceInformation( "Culture text info {0}: {1}", nameof( textInfo.ANSICodePage ), textInfo.ANSICodePage );
+            _trace.TraceInformation( "Culture text info {0}: {1}", nameof( textInfo.CultureName ), textInfo.CultureName );
+            _trace.TraceInformation( "Culture text info {0}: {1}", nameof( textInfo.EBCDICCodePage ), textInfo.EBCDICCodePage );
+            _trace.TraceInformation( "Culture text info {0}: {1}", nameof( textInfo.MacCodePage ), textInfo.MacCodePage );
+            _trace.TraceInformation( "Culture text info {0}: {1}", nameof( textInfo.OEMCodePage ), textInfo.OEMCodePage );
 
             _parentProcess = Process.GetProcessById( parentPid );
             _parentProcessObserver = new Thread( ParentProcessObserver );
@@ -59,8 +80,9 @@ namespace wcmd.UI
             _trace.TraceInformation( "Reading configuration..." );
             var config = Configuration.LoadDefault() ?? Configuration.CreateDefault();
 
-            _dataFile = new CachedDataFile( new DataFile( config ) );
+            //_dataFile = new CachedDataFile( new DataFile( config ) );
             //_dataFile.DumpRecords();
+            _dataFile = new OnDemandCachedDataFile( new DataFile( config ) );
             _storedCommand = _dataFile.Eof;
             _searcher = new Searcher( _dataFile );
 
@@ -214,7 +236,11 @@ namespace wcmd.UI
 
                             // If we are active, we know that the console is not. This is a final state.
                             if ( IsActive )
+                            {
+                                // Just make sure the console is visible.
+                                //User32.SetWindowPos( hwndConsole, new IntPtr(-2), 0, 0, 0, 0, User32.SetWindowPosFlags.SWP_NOACTIVATE );
                                 return;
+                            }
 
                             var hwndTop = User32.GetForegroundWindow();
                             if ( hwndTop != hwndConsole )
@@ -309,10 +335,77 @@ namespace wcmd.UI
             _trace.TraceInformation( "Writing \"{0}\"...", text );
             User32.SetForegroundWindow( Kernel32.GetConsoleWindow() );
             var now = DateTime.Now;
-            SendKeys.SendWait( text + "\r" );
-            Activate();
-            document.Blocks.Clear();
+
+            text = AdjustForAccentSymbols( text );
+
+            if ( !text.Contains( "~" ) )
+            {
+                SendKeys.SendWait( text + "\r" );
+                Activate();
+                document.Blocks.Clear();
+            }
+            else
+                MessageBox.Show(
+                    "Your command contains '~'. This familiar don't support that because there is a bug in .NET: https://referencesource.microsoft.com/#system.windows.forms/winforms/Managed/System/WinForms/SendKeys.cs,547."
+                );
+
             _storedCommand = _dataFile.Write( now, text );
+        }
+
+        private string AdjustForAccentSymbols( string text )
+        {
+            var keyboardLayout = Thread.CurrentThread.CurrentCulture.KeyboardLayoutId;
+
+            // TODO: Make this configurable.
+            if ( keyboardLayout != 1033 )
+            {
+                _trace.TraceInformation( "Keyboard layout ({0}) doesn't require adjust for accent letters.", keyboardLayout );
+                return text;
+            }
+
+            for ( var i = 0; i < text.Length; ++i )
+            {
+                if ( !IsAccentSymbol( text[i] ) )
+                    continue;
+
+                var result = new StringBuilder( text.Length + 32, int.MaxValue );
+                result.Append( text.Substring( 0, i + 1 ) );
+                result.Append( ' ' );
+
+                for ( i = i + 1; i < text.Length; ++i )
+                {
+                    var ch = text[i];
+                    result.Append( ch );
+                    if ( IsAccentSymbol( text[i] ) )
+                        result.Append( ' ' );
+                }
+
+                text = result.ToString();
+                _trace.TraceInformation( "Because of keyboard layout ({0}), text was adjusted to \"{1}\".", keyboardLayout, text );
+                return text;
+            }
+
+            _trace.TraceInformation( "Keyboard layout is {0}, but no accent symbol was found.", keyboardLayout );
+            return text;
+        }
+
+        /// <summary>
+        /// Returns true if the character is used for building an accent symbol.
+        /// </summary>
+        private static bool IsAccentSymbol( char ch )
+        {
+            switch ( ch )
+            {
+                case '~': // Used for ã, õ.
+                case '`': // Used for à, è, ì, ò, ù.
+                case '\'': // Used for á, é, í, ó, ú, ç.
+                case '"': // Used for ä, ë, ï, ö, ü.
+                case '^': // Used for â, ê, î, ô, û. 
+                    return true;
+
+                default:
+                    return false;
+            }
         }
 
         /*

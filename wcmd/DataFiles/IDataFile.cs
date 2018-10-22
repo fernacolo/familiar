@@ -20,11 +20,6 @@ namespace wcmd.DataFiles
         IStoredCommand Eof { get; }
 
         /// <summary>
-        /// Reads a page of commands from the file end.
-        /// </summary>
-        CommandPage ReadCommandsFromEnd( CommandPage previous, int maxResults, TimeSpan maxDuration );
-
-        /// <summary>
         /// Stores an executed command, and returns an object that represents it.
         /// </summary>
         IStoredCommand Write( DateTime whenExecuted, string command );

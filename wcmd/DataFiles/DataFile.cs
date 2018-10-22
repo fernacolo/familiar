@@ -50,44 +50,12 @@ namespace wcmd.DataFiles
             }
         }
 
-        public IStoredCommand Bof => throw new NotImplementedException();
+        private readonly IStoredCommand _bof = new DataFileBookmark( -1L, null );
+        private readonly IStoredCommand _eof = new DataFileBookmark( long.MaxValue, null );
 
-        public IStoredCommand Eof => throw new NotImplementedException();
+        public IStoredCommand Bof => _bof;
 
-        public CommandPage ReadCommandsFromEnd( CommandPage previous, int maxResults, TimeSpan maxDuration )
-        {
-            var result = new CommandPage();
-
-            var stopwatch = Stopwatch.StartNew();
-
-            using ( var reader = GetReader() )
-            {
-                var stream = reader.BaseStream;
-                var pos = previous?.Offset ?? stream.Length;
-                AssertAligned( pos );
-                _trace.TraceInformation( $"Reading commands from end. Position: {pos}" );
-
-                while ( pos > 0 )
-                {
-                    // If at least one is read and we timed out, stop reading.
-                    if ( result.Count > 0 && stopwatch.Elapsed > maxDuration )
-                        break;
-
-                    // If we have read the maximum number, stop reading.
-                    if ( result.Count >= maxResults )
-                        break;
-
-                    var record = ReadPreviousRecord( reader, ref pos );
-                    if ( record.Type == DataFileRecord.CommandV1 )
-                        result.Add( record );
-                }
-
-                _trace.TraceInformation( $"A total of {result.Count} commands were read at {pos}" );
-                result.Offset = pos;
-            }
-
-            return result;
-        }
+        public IStoredCommand Eof => _eof;
 
         public IStoredCommand Write( DateTime whenExecuted, string command )
         {
@@ -139,12 +107,60 @@ namespace wcmd.DataFiles
 
         public IStoredCommand GetPrevious( IStoredCommand item )
         {
-            throw new NotImplementedException();
+            if ( item == null )
+                throw new ArgumentNullException( nameof( item ) );
+            if ( item == _bof )
+                throw new ArgumentException( "Cannot read before BOF." );
+
+            var bm = (DataFileBookmark) item;
+            if ( bm.Position == 0L )
+                return _bof;
+
+            using ( var reader = GetReader() )
+            {
+                var stream = reader.BaseStream;
+                var position = bm == _eof ? stream.Length : bm.Position;
+                for ( ;; )
+                {
+                    var record = ReadPreviousRecord( reader, ref position );
+                    if ( record.Type == DataFileRecord.CommandV1 )
+                        return new DataFileBookmark( position, record.Command );
+                    if ( position == 0L )
+                        return _bof;
+                }
+            }
         }
 
         public IStoredCommand GetNext( IStoredCommand item )
         {
-            throw new NotImplementedException();
+            if ( item == null )
+                throw new ArgumentNullException( nameof( item ) );
+            if ( item == _eof )
+                throw new ArgumentException( "Cannot read after EOF." );
+
+            var bm = (DataFileBookmark) item;
+
+            using ( var reader = GetReader() )
+            {
+                long position;
+                if ( bm == _bof )
+                    position = 0L;
+                else
+                {
+                    position = bm.Position;
+                    ReadNextRecord( reader, ref position );
+                }
+
+                for ( ;; )
+                {
+                    var lastPosition = position;
+                    var record = ReadNextRecord( reader, ref position );
+                    if ( record == null )
+                        return _eof;
+                    if ( record.Type == DataFileRecord.CommandV1 )
+                        return new DataFileBookmark( lastPosition, record.Command );
+                }
+            }
         }
 
         /// <summary>
@@ -159,7 +175,7 @@ namespace wcmd.DataFiles
             stream.Position = pos;
             var size = ReadCloseMark( reader );
 
-            // Positions at the open mark.
+            // Move to the open mark.
             size = Align( size );
             pos -= size;
             pos -= SizeOfOpenMark;
@@ -167,6 +183,22 @@ namespace wcmd.DataFiles
 
             // Read the record.
             return ReadRecord( reader );
+        }
+
+        /// <summary>
+        /// Reads the record positioned at the specified position. Updates the specified position to contain the position of the next record.
+        /// Returns null if the specified position is after the end of stream.
+        /// </summary>
+        private DataFileRecord ReadNextRecord( BinaryReader reader, ref long pos )
+        {
+            AssertAligned( pos );
+            var stream = reader.BaseStream;
+            if ( pos >= stream.Length )
+                return null;
+            stream.Position = pos;
+            var record = ReadRecord( reader );
+            pos = Align( stream.Position );
+            return record;
         }
 
         private DataFileRecord ReadRecord( BinaryReader reader )
