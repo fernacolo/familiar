@@ -58,7 +58,7 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
-    <Compile Include="DataFiles\OnDemandCachedDataFile.cs" />
+    <Compile Include="DataFiles\CachedDataFile.cs" />
     <Compile Include="DataFiles\DataCorruptionException.cs" />
     <Compile Include="DataFiles\DataFileRecord.cs" />
     <Compile Include="DataFiles\IDataFile.cs" />

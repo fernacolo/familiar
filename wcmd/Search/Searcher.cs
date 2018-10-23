@@ -20,7 +20,7 @@ namespace wcmd
 
         public Searcher( IDataFile dataFile )
         {
-            _trace = DiagnosticsCenter.GetTraceSource( this );
+            _trace = DiagnosticsCenter.GetTraceSource( nameof( Searcher ) );
             _dataFile = dataFile;
             _newRequest = new SemaphoreSlim( 0, int.MaxValue );
             _requests = new ConcurrentQueue<Request>();

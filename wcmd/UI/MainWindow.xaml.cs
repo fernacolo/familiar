@@ -41,7 +41,7 @@ namespace wcmd.UI
             // Safe initializations. Do not put anything here that can throw an exception.
             // Defer to loaded.
 
-            _trace = DiagnosticsCenter.GetTraceSource( this );
+            _trace = DiagnosticsCenter.GetTraceSource( nameof( MainWindow ) );
 
             var culture = Thread.CurrentThread.CurrentCulture;
             _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.DisplayName ), culture.DisplayName );

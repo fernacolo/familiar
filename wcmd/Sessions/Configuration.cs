@@ -11,7 +11,7 @@ namespace wcmd.Sessions
 {
     internal class Configuration
     {
-        private static readonly TraceSource _trace = DiagnosticsCenter.GetTraceSource( typeof( Configuration ) );
+        private static readonly TraceSource _trace = DiagnosticsCenter.GetTraceSource( nameof( Configuration ) );
 
         #region Static
 

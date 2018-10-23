@@ -21,7 +21,7 @@ namespace wcmd.UI
 
         public SearchWindow( Searcher searcher )
         {
-            _trace = DiagnosticsCenter.GetTraceSource( this );
+            _trace = DiagnosticsCenter.GetTraceSource( nameof(SearchWindow) );
             _searcher = searcher ?? throw new ArgumentNullException( nameof( searcher ) );
             CurrentFindings = new ObservableCollection<IStoredCommand>();
             DataContext = this;

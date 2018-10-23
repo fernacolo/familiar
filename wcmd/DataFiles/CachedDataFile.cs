@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace wcmd.DataFiles
 {
-    internal class OnDemandCachedDataFile : IDataFile
+    internal class CachedDataFile : IDataFile
     {
         private readonly IDataFile _inner;
         private readonly CacheEntry _bof;
@@ -18,7 +18,7 @@ namespace wcmd.DataFiles
 
         public string FileName => _inner.FileName;
 
-        public OnDemandCachedDataFile( IDataFile inner )
+        public CachedDataFile( IDataFile inner )
         {
             _inner = inner ?? throw new ArgumentNullException( nameof( inner ) );
             _bof = new CacheEntry( inner.Bof, null, null );

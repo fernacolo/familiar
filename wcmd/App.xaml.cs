@@ -20,7 +20,7 @@ namespace wcmd
 
         private void OnStartup( object sender, StartupEventArgs e )
         {
-            _trace = DiagnosticsCenter.GetTraceSource( this );
+            _trace = DiagnosticsCenter.GetTraceSource( nameof( App ) );
 
             var args = Environment.GetCommandLineArgs();
             for ( var i = 0; i < args.Length; ++i )

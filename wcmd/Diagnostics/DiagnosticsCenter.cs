@@ -9,12 +9,11 @@ namespace wcmd.Diagnostics
     {
         private static readonly LogViewTraceListener _logViewListener = new LogViewTraceListener();
 
-        public static TraceSource GetTraceSource( object owner, string name = null )
+        public static TraceSource GetTraceSource( string name )
         {
-            var sourceName = owner.GetType().Name;
-            if ( name != null )
-                sourceName += "." + name;
-            var result = new TraceSource( sourceName, SourceLevels.All );
+            if ( name == null )
+                throw new ArgumentNullException( nameof( name ) );
+            var result = new TraceSource( name, SourceLevels.All );
             result.Listeners.Clear();
             result.Listeners.Add( _logViewListener );
             return result;

@@ -17,7 +17,7 @@ namespace wcmd.DataFiles
 
         public ReplicationJob( string jobName, DirectoryInfo source, DirectoryInfo destination, TimeSpan timeBetweenPolls, Func<string, bool> accept )
         {
-            _trace = DiagnosticsCenter.GetTraceSource( this, jobName );
+            _trace = DiagnosticsCenter.GetTraceSource( jobName );
             _source = source;
             _destination = destination;
             _thread = new Thread( Run );

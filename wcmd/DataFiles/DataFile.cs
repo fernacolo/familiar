@@ -15,7 +15,7 @@ namespace wcmd.DataFiles
 
         public DataFile( Configuration config )
         {
-            _trace = DiagnosticsCenter.GetTraceSource( this );
+            _trace = DiagnosticsCenter.GetTraceSource( $"{nameof(DataFile)} - {config.SessionId}" );
             _dataFileName = Path.Combine( config.LocalDbDirectory.ToString(), $"{config.SessionId}.dat" );
         }
 
