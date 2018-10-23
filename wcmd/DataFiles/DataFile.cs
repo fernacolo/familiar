@@ -19,6 +19,15 @@ namespace wcmd.DataFiles
             _dataFileName = Path.Combine( config.LocalDbDirectory.ToString(), $"{config.SessionId}.dat" );
         }
 
+        public string StateTag
+        {
+            get
+            {
+                var info = new FileInfo( _dataFileName );
+                return $"{info.LastWriteTimeUtc.Ticks}/{info.Length}";
+            }
+        }
+
         public string FileName => new FileInfo( _dataFileName ).Name;
 
         public void DumpRecords()
@@ -50,14 +59,14 @@ namespace wcmd.DataFiles
             }
         }
 
-        private readonly IStoredCommand _bof = new DataFileBookmark( -1L, null );
-        private readonly IStoredCommand _eof = new DataFileBookmark( long.MaxValue, null );
+        private readonly IStoredCommand _bof = new DataFileBookmark( null, -1L, null );
+        private readonly IStoredCommand _eof = new DataFileBookmark( null, long.MaxValue, null );
 
         public IStoredCommand Bof => _bof;
 
         public IStoredCommand Eof => _eof;
 
-        public IStoredCommand Write( DateTime whenExecuted, string command )
+        public IStoredCommand Write( DateTime whenExecuted, string command, ref string stateTag )
         {
             var record = new DataFileRecord
             {
@@ -66,11 +75,14 @@ namespace wcmd.DataFiles
                 Command = command
             };
 
-            var position = WriteRecord( record );
-            return new DataFileBookmark( position, command );
+            var position = WriteRecord( record, ref stateTag );
+            if ( position == -1L )
+                return null;
+
+            return new DataFileBookmark( stateTag, position, command );
         }
 
-        private long WriteRecord( DataFileRecord record )
+        private long WriteRecord( DataFileRecord record, ref string stateTag )
         {
             var dataSize = record.DataSize;
             if ( dataSize < 1 || dataSize > ushort.MaxValue )
@@ -81,6 +93,9 @@ namespace wcmd.DataFiles
 
             using ( var writer = GetWriterForAppend() )
             {
+                if ( stateTag != null && StateTag != stateTag )
+                    return -1L;
+
                 var stream = writer.BaseStream;
                 position = stream.Position;
 
@@ -95,6 +110,9 @@ namespace wcmd.DataFiles
                 WriteZeros( writer, Align( writtenSize ) - writtenSize );
                 WriteCloseMark( writer, size );
             }
+
+            // MINOR: Slight change of concurrent modification between file closure and this read.
+            stateTag = StateTag;
 
             return position;
         }
@@ -124,7 +142,7 @@ namespace wcmd.DataFiles
                 {
                     var record = ReadPreviousRecord( reader, ref position );
                     if ( record.Type == DataFileRecord.CommandV1 )
-                        return new DataFileBookmark( position, record.Command );
+                        return new DataFileBookmark( StateTag, position, record.Command );
                     if ( position == 0L )
                         return _bof;
                 }
@@ -158,7 +176,7 @@ namespace wcmd.DataFiles
                     if ( record == null )
                         return _eof;
                     if ( record.Type == DataFileRecord.CommandV1 )
-                        return new DataFileBookmark( lastPosition, record.Command );
+                        return new DataFileBookmark( StateTag, lastPosition, record.Command );
                 }
             }
         }
@@ -388,11 +406,14 @@ namespace wcmd.DataFiles
 
     internal class DataFileBookmark : IStoredCommand
     {
-        public DataFileBookmark( long position, string command )
+        public DataFileBookmark( string stateTag, long position, string command )
         {
+            StateTag = stateTag;
             Position = position;
             Command = command;
         }
+
+        public string StateTag { get; }
 
         public DateTime WhenExecuted => throw new NotImplementedException();
 

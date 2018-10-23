@@ -14,6 +14,8 @@ namespace wcmd.DataFiles
         private CacheEntry _first;
         private CacheEntry _last;
 
+        public string StateTag => _inner.StateTag;
+
         public string FileName => _inner.FileName;
 
         public OnDemandCachedDataFile( IDataFile inner )
@@ -27,34 +29,34 @@ namespace wcmd.DataFiles
 
         public IStoredCommand Eof => _eof;
 
-        public IStoredCommand Write( DateTime whenExecuted, string command )
+        public IStoredCommand Write( DateTime whenExecuted, string command, ref string stateTag )
         {
-            var inner = _inner.Write( whenExecuted, command );
+            if ( stateTag != null )
+                throw new NotImplementedException();
 
-            // The new last record is the one we just wrote.
-            var last = new CacheEntry( inner, _last, _eof );
+            if ( _last != null )
+                stateTag = _last.StateTag;
 
-            // Update all previous last entries so they point to the new last.
-            for ( var i = _lastEntries.Count - 1; i >= 0; --i )
+            var inner = _inner.Write( whenExecuted, command, ref stateTag );
+            if ( inner == null )
             {
-                _lastEntries[i].TryGetTarget( out var previousLast );
-                if ( previousLast != null )
-                {
-                    Debug.Assert( previousLast._next == _eof );
-                    previousLast._next = last;
-                }
+                // If the conditional write failed, some records might have appeared after what knew for last record.
+                // This means what we have for last record is not actually the last.
+                SetLast( null );
 
-                _lastEntries.RemoveAt( i );
+                // Write again, this time unconditionally.
+                stateTag = null;
+                inner = _inner.Write( whenExecuted, command, ref stateTag );
             }
 
-            // The loop above must have updated the entry referenced by _last.
-            if ( _last != null )
-                Debug.Assert( _last._next == last );
+            Debug.Assert( inner != null );
 
-            _last = last;
-            TrackLast( last );
+            // The new last record is the one we just wrote.
+            var newLast = new CacheEntry( inner, _last, _eof );
 
-            return last;
+            // Set the last and return the record we just wrote.
+            SetLast( newLast );
+            return newLast;
         }
 
         public IStoredCommand GetPrevious( IStoredCommand item )
@@ -66,18 +68,23 @@ namespace wcmd.DataFiles
 
             if ( item == _eof )
             {
+                if ( _last != null && _inner.StateTag != _last.StateTag )
+                {
+                    // Inner store have changed. We must clear the last.
+                    SetLast( null );
+                    Debug.Assert( _last == null );
+                }
+
                 if ( _last == null )
                 {
                     // Read the last from inner store, and initialize the cached last.
                     var fromInner = _inner.GetPrevious( _inner.Eof );
-                    _last = fromInner == _inner.Bof ? _bof : new CacheEntry( fromInner, null, _eof );
+                    var newLast = fromInner == _inner.Bof ? _bof : new CacheEntry( fromInner, null, _eof );
+                    SetLast( newLast );
 
-                    if ( _last == _bof )
+                    if ( newLast == _bof )
                         // Optimize for the empty case.
                         _first = _eof;
-                    else
-                        // Track the last for updating when writing.
-                        TrackLast( _last );
                 }
 
                 return _last;
@@ -94,8 +101,8 @@ namespace wcmd.DataFiles
                 bm._previous = fromInner == _inner.Bof ? _bof : new CacheEntry( fromInner, null, bm );
 
                 // If we have both _previous and _next, we don't need _inner any more; set to null to allow garbage collection.
-                if ( bm._next != null )
-                    bm._inner = null;
+                //if ( bm._next != null )
+                //    bm._inner = null;
 
                 if ( bm._previous == _bof )
                 {
@@ -132,6 +139,13 @@ namespace wcmd.DataFiles
 
             var bm = (CacheEntry) item;
 
+            if ( bm._next == _eof && _inner.StateTag != bm.StateTag )
+            {
+                // Inner store have changed. We must clear the last.
+                SetLast( null );
+                Debug.Assert( bm._next == null );
+            }
+
             // If we don't have the next, get it from the inner store.
             if ( bm._next == null )
             {
@@ -141,19 +155,42 @@ namespace wcmd.DataFiles
                 bm._next = fromInner == _inner.Eof ? _eof : new CacheEntry( fromInner, bm, null );
 
                 // If we have both _previous and _next, we don't need _inner anymore; set to null to allow garbage collection.
-                if ( bm._previous != null )
-                    bm._inner = null;
+                //if ( bm._previous != null )
+                //    bm._inner = null;
 
                 if ( bm._next == _eof )
-                {
-                    // We have reach EOF. Cache the last.
-                    _last = bm;
-                    // Track the last for updating when writing.
-                    TrackLast( bm );
-                }
+                    // We have reached EOF. Cache the last.
+                    SetLast( bm );
             }
 
             return bm._next;
+        }
+
+        private void SetLast( CacheEntry newLast )
+        {
+            // Update all previous last entries so they point to the new last.
+            for ( var i = _lastEntries.Count - 1; i >= 0; --i )
+            {
+                _lastEntries[i].TryGetTarget( out var previousLast );
+                if ( previousLast != null )
+                {
+                    Debug.Assert( previousLast._next == _eof );
+                    Debug.Assert( newLast != _bof );
+                    previousLast._next = newLast;
+                }
+
+                // No entry is last anymore; therefore we can stop tracking it.
+                _lastEntries.RemoveAt( i );
+            }
+
+            // The loop above must have updated the old last.
+            if ( _last != null )
+                Debug.Assert( _last._next == newLast );
+
+            _last = newLast;
+
+            if ( newLast != null && newLast != _bof )
+                TrackLast( newLast );
         }
 
         /// <summary>
@@ -185,17 +222,21 @@ namespace wcmd.DataFiles
 
         private class CacheEntry : IStoredCommand
         {
+            private readonly string _stateTag;
             public IStoredCommand _inner;
             public CacheEntry _previous;
             public CacheEntry _next;
 
             public CacheEntry( IStoredCommand inner, CacheEntry previous, CacheEntry next )
             {
+                _stateTag = inner?.StateTag;
                 _inner = inner ?? throw new ArgumentNullException( nameof( inner ) );
                 Command = inner.Command;
                 _previous = previous;
                 _next = next;
             }
+
+            public string StateTag => _stateTag;
 
             public DateTime WhenExecuted => throw new NotImplementedException();
 

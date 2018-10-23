@@ -29,7 +29,7 @@ namespace wcmd.UI
         private readonly Thread _parentProcessObserver;
         private readonly Thread _consoleWindowObserver;
 
-        //private CachedDataFile _dataFile;
+        //private FullCachedDataFile _dataFile;
         private IDataFile _dataFile;
         private IStoredCommand _storedCommand;
         private Searcher _searcher;
@@ -80,9 +80,9 @@ namespace wcmd.UI
             _trace.TraceInformation( "Reading configuration..." );
             var config = Configuration.LoadDefault() ?? Configuration.CreateDefault();
 
-            //_dataFile = new CachedDataFile( new DataFile( config ) );
+            //_dataFile = new FullCachedDataFile( new DataFile( config ) );
             //_dataFile.DumpRecords();
-            _dataFile = new OnDemandCachedDataFile( new DataFile( config ) );
+            _dataFile = new CachedDataFile( new DataFile( config ) );
             _storedCommand = _dataFile.Eof;
             _searcher = new Searcher( _dataFile );
 
@@ -349,7 +349,8 @@ namespace wcmd.UI
                     "Your command contains '~'. This familiar don't support that because there is a bug in .NET: https://referencesource.microsoft.com/#system.windows.forms/winforms/Managed/System/WinForms/SendKeys.cs,547."
                 );
 
-            _storedCommand = _dataFile.Write( now, text );
+            string stateTag = null;
+            _storedCommand = _dataFile.Write( now, text, ref stateTag );
         }
 
         private string AdjustForAccentSymbols( string text )

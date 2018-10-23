@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="MainWindow" Height="164.108" Width="548" WindowStyle="None" Loaded="Window_Loaded"
+        Title="Familiar" Height="164.108" Width="548" WindowStyle="ToolWindow" Loaded="Window_Loaded"
         FocusManager.FocusedElement="{Binding ElementName=RtCommand}"
         ShowInTaskbar="False">
     <DockPanel>

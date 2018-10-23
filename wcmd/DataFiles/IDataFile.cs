@@ -5,6 +5,12 @@ namespace wcmd.DataFiles
     public interface IDataFile
     {
         /// <summary>
+        /// A string that represents the current state of this store.
+        /// This value is automatically modified when the store changes.
+        /// </summary>
+        string StateTag { get; }
+
+        /// <summary>
         /// The absolute path of data file name.
         /// </summary>
         string FileName { get; }
@@ -22,7 +28,12 @@ namespace wcmd.DataFiles
         /// <summary>
         /// Stores an executed command, and returns an object that represents it.
         /// </summary>
-        IStoredCommand Write( DateTime whenExecuted, string command );
+        /// <remarks>
+        /// If <see cref="stateTag"/> is null, then the write is always attempted and this method never returns null.
+        /// If <see cref="stateTag"/> is not null, then the write is only attempted when <see cref="StateTag"/> matches the specified value (conditional operation).
+        /// If the condition is not met, this method returns null.
+        /// </remarks>
+        IStoredCommand Write( DateTime whenExecuted, string command, ref string stateTag );
 
         /// <summary>
         /// Returns the command that appears before the specified one, or null if the specified one is the first.
@@ -37,7 +48,19 @@ namespace wcmd.DataFiles
 
     public interface IStoredCommand
     {
+        /// <summary>
+        /// The store state when this record was read.
+        /// </summary>
+        string StateTag { get; }
+
+        /// <summary>
+        /// When the command was executed.
+        /// </summary>
         DateTime WhenExecuted { get; }
+
+        /// <summary>
+        /// The exact command that was executed.
+        /// </summary>
         string Command { get; }
     }
 }
