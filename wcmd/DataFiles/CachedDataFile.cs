@@ -220,6 +220,16 @@ namespace wcmd.DataFiles
             _lastEntries.Add( new WeakReference<CacheEntry>( entry ) );
         }
 
+        public byte[] CreateLink( IStoredCommand item )
+        {
+            throw new NotImplementedException();
+        }
+
+        public IStoredCommand ResolveLink( byte[] link )
+        {
+            throw new NotImplementedException();
+        }
+
         private class CacheEntry : IStoredCommand
         {
             private readonly string _stateTag;

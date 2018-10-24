@@ -44,6 +44,17 @@ namespace wcmd.DataFiles
         /// Returns the command that appears after the specified one, or null if the specified one is the last.
         /// </summary>
         IStoredCommand GetNext( IStoredCommand item );
+
+        /// <summary>
+        /// Creates a link for the specified item. The item can be recovered with <see cref="ResolveLink"/>.
+        /// </summary>
+        byte[] CreateLink( IStoredCommand item );
+
+        /// <summary>
+        /// Resolves a link into an item.
+        /// </summary>
+        /// <param name="link">An array of bytes obtained with a call to <see cref="CreateLink"/></param>
+        IStoredCommand ResolveLink( byte[] link );
     }
 
     public interface IStoredCommand

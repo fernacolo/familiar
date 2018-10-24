@@ -33,7 +33,7 @@ namespace wcmd.UI
         private IDataFile _dataFile;
         private IStoredCommand _storedCommand;
         private Searcher _searcher;
-        private ReplicationJob _inboundMonitor;
+        private InboundReplication _inboundMonitor;
         private ReplicationJob _outboundMonitor;
 
         public MainWindow( int parentPid )
@@ -89,7 +89,7 @@ namespace wcmd.UI
             if ( config.SharedDirectory != null )
             {
                 _trace.TraceInformation( "Using shared folder: {0}", config.SharedDirectory.FullName );
-                _inboundMonitor = new ReplicationJob( "InboundReplication", config.SharedDirectory, config.LocalDbDirectory, TimeSpan.FromSeconds( 10 ), IsNotMyDataFile );
+                _inboundMonitor = new InboundReplication( config.SharedDirectory, config.LocalDbDirectory, TimeSpan.FromSeconds( 10 ), IsNotMyDataFile );
                 _inboundMonitor.Start();
                 _outboundMonitor = new ReplicationJob( "OutboundReplication", config.LocalDbDirectory, config.SharedDirectory, TimeSpan.FromSeconds( 30 ), IsMyDataFile );
                 _outboundMonitor.Start();

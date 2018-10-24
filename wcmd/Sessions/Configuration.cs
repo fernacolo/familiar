@@ -17,7 +17,30 @@ namespace wcmd.Sessions
 
         private static FileInfo GetDefaultConfigFile()
         {
-            var path = Path.Combine( DefaultDbDirectory.FullName, Constants.ConfigFileName );
+            DirectoryInfo dbDirectory = null;
+            var args = Environment.GetCommandLineArgs();
+            const string flagName = "-databasedir:";
+            foreach ( var arg in args )
+            {
+                var lower = arg.ToLowerInvariant();
+                if ( lower.StartsWith( flagName ) )
+                {
+                    dbDirectory = new DirectoryInfo( arg.Substring( flagName.Length ) );
+                    break;
+                }
+            }
+
+            if ( dbDirectory == null )
+                dbDirectory = DefaultDbDirectory;
+
+            if ( !dbDirectory.Exists )
+            {
+                _trace.TraceWarning( "Local database directory does not exist: {0}", dbDirectory.FullName );
+                _trace.TraceInformation( "Trying to create local database directory..." );
+                dbDirectory.Create();
+            }
+
+            var path = Path.Combine( dbDirectory.FullName, Constants.ConfigFileName );
             return new FileInfo( path );
         }
 
@@ -37,13 +60,6 @@ namespace wcmd.Sessions
 
             var dbDir = new DirectoryInfo( Path.Combine( appDataRoot, Constants.LocalDirectory ) );
             _trace.TraceInformation( "Local database directory: {0}", dbDir );
-
-            if ( dbDir.Exists )
-                return dbDir;
-
-            _trace.TraceWarning( "Local database directory does not exist: {0}", dbDir );
-            _trace.TraceInformation( "Trying to create local database directory..." );
-            dbDir.Create();
 
             return dbDir;
         }

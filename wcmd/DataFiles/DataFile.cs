@@ -11,24 +11,35 @@ namespace wcmd.DataFiles
     internal sealed class DataFile : IDataFile
     {
         private readonly TraceSource _trace;
-        private readonly string _dataFileName;
+        private readonly FileInfo _fileInfo;
 
         public DataFile( Configuration config )
         {
-            _trace = DiagnosticsCenter.GetTraceSource( $"{nameof(DataFile)} - {config.SessionId}" );
-            _dataFileName = Path.Combine( config.LocalDbDirectory.ToString(), $"{config.SessionId}.dat" );
+            if ( config == null )
+                throw new ArgumentNullException( nameof( config ) );
+            _trace = DiagnosticsCenter.GetTraceSource( $"{nameof( DataFile )} - {config.SessionId}" );
+            var dataFileName = Path.Combine( config.LocalDbDirectory.ToString(), $"{config.SessionId}.dat" );
+            _fileInfo = new FileInfo( dataFileName );
+        }
+
+        public DataFile( FileInfo fileInfo )
+        {
+            if ( fileInfo == null )
+                throw new ArgumentNullException( nameof( fileInfo ) );
+            _trace = DiagnosticsCenter.GetTraceSource( $"{nameof( DataFile )} - {fileInfo.FullName}" );
+            _fileInfo = fileInfo;
         }
 
         public string StateTag
         {
             get
             {
-                var info = new FileInfo( _dataFileName );
-                return $"{info.LastWriteTimeUtc.Ticks}/{info.Length}";
+                _fileInfo.Refresh();
+                return $"{_fileInfo.LastWriteTimeUtc.Ticks}/{_fileInfo.Length}";
             }
         }
 
-        public string FileName => new FileInfo( _dataFileName ).Name;
+        public string FileName => _fileInfo.Name;
 
         public void DumpRecords()
         {
@@ -53,14 +64,14 @@ namespace wcmd.DataFiles
             catch ( Exception ex )
             {
                 _trace.TraceError( "{0}", ex );
-                using ( var stream = new FileStream( _dataFileName, FileMode.Open, FileAccess.Write, FileShare.Delete ) )
+                using ( var stream = new FileStream( _fileInfo.FullName, FileMode.Open, FileAccess.Write, FileShare.Delete ) )
                     stream.SetLength( lastGoodPosition );
                 _trace.TraceInformation( "File was truncated at: {0}.", lastGoodPosition );
             }
         }
 
-        private readonly IStoredCommand _bof = new DataFileBookmark( null, -1L, null );
-        private readonly IStoredCommand _eof = new DataFileBookmark( null, long.MaxValue, null );
+        private readonly IStoredCommand _bof = new DataFileBookmark( null, -1L, DateTime.MinValue, null );
+        private readonly IStoredCommand _eof = new DataFileBookmark( null, long.MaxValue, DateTime.MaxValue, null );
 
         public IStoredCommand Bof => _bof;
 
@@ -79,7 +90,7 @@ namespace wcmd.DataFiles
             if ( position == -1L )
                 return null;
 
-            return new DataFileBookmark( stateTag, position, command );
+            return new DataFileBookmark( stateTag, position, whenExecuted, command );
         }
 
         private long WriteRecord( DataFileRecord record, ref string stateTag )
@@ -140,11 +151,11 @@ namespace wcmd.DataFiles
                 var position = bm == _eof ? stream.Length : bm.Position;
                 for ( ;; )
                 {
-                    var record = ReadPreviousRecord( reader, ref position );
-                    if ( record.Type == DataFileRecord.CommandV1 )
-                        return new DataFileBookmark( StateTag, position, record.Command );
                     if ( position == 0L )
                         return _bof;
+                    var record = ReadPreviousRecord( reader, ref position );
+                    if ( record.Type == DataFileRecord.CommandV1 )
+                        return new DataFileBookmark( StateTag, position, record.WhenExecuted, record.Command );
                 }
             }
         }
@@ -165,6 +176,7 @@ namespace wcmd.DataFiles
                     position = 0L;
                 else
                 {
+                    // Skip the specified record.
                     position = bm.Position;
                     ReadNextRecord( reader, ref position );
                 }
@@ -176,8 +188,32 @@ namespace wcmd.DataFiles
                     if ( record == null )
                         return _eof;
                     if ( record.Type == DataFileRecord.CommandV1 )
-                        return new DataFileBookmark( StateTag, lastPosition, record.Command );
+                        return new DataFileBookmark( StateTag, lastPosition, record.WhenExecuted, record.Command );
                 }
+            }
+        }
+
+        public byte[] CreateLink( IStoredCommand item )
+        {
+            if ( item == _bof )
+                return new byte[] {1};
+            if ( item == _eof )
+                return new byte[] {2};
+
+            return ((DataFileBookmark) item).CreateLink();
+        }
+
+        public IStoredCommand ResolveLink( byte[] link )
+        {
+            if ( link.Length != 1 )
+                return new DataFileBookmark( link );
+
+            switch ( link[0] )
+            {
+                case 1: return _bof;
+                case 2: return _eof;
+                default:
+                    throw new ArgumentException( "Invalid value", nameof( link ) );
             }
         }
 
@@ -298,7 +334,7 @@ namespace wcmd.DataFiles
 
         private void ThrowDataCorruptionException( BinaryReader reader, long offset, string message )
         {
-            message = $"File {_dataFileName}, position {GetPosition( reader ) + offset}: {message}";
+            message = $"File {_fileInfo.FullName}, position {GetPosition( reader ) + offset}: {message}";
             throw new DataCorruptionException( message );
         }
 
@@ -322,7 +358,7 @@ namespace wcmd.DataFiles
         private void AssertAligned( long pos )
         {
             if ( pos != Align( pos ) )
-                throw new InvalidOperationException( $"File {_dataFileName}, stream is not aligned. Expected {Align( pos )}, found {pos}." );
+                throw new InvalidOperationException( $"File {_fileInfo.FullName}, stream is not aligned. Expected {Align( pos )}, found {pos}." );
         }
 
         private static ushort Align( ushort value )
@@ -368,7 +404,7 @@ namespace wcmd.DataFiles
 
         private BinaryWriter GetWriterForAppend()
         {
-            var stream = new FileStream( _dataFileName, FileMode.Append, FileAccess.Write, FileShare.Delete );
+            var stream = new FileStream( _fileInfo.FullName, FileMode.Append, FileAccess.Write, FileShare.Delete );
             var writer = new BinaryWriter( stream, Encoding.UTF8 );
             return writer;
         }
@@ -382,14 +418,14 @@ namespace wcmd.DataFiles
             {
                 try
                 {
-                    stream = new FileStream( _dataFileName, FileMode.OpenOrCreate, FileAccess.Read, FileShare.Delete );
+                    stream = new FileStream( _fileInfo.FullName, FileMode.OpenOrCreate, FileAccess.Read, FileShare.Delete );
                     break;
                 }
                 catch ( IOException ex )
                 {
                     if ( (uint) ex.HResult == 0x80070020 && sw.ElapsedMilliseconds < 5000 )
                     {
-                        _trace.TraceInformation( "File in use: {0}", _dataFileName );
+                        _trace.TraceInformation( "File in use: {0}", _fileInfo.FullName );
                         Thread.Sleep( 250 );
                         continue;
                     }
@@ -406,16 +442,60 @@ namespace wcmd.DataFiles
 
     internal class DataFileBookmark : IStoredCommand
     {
-        public DataFileBookmark( string stateTag, long position, string command )
+        public DataFileBookmark( string stateTag, long position, DateTime whenExecuted, string command )
         {
             StateTag = stateTag;
             Position = position;
+            WhenExecuted = whenExecuted;
             Command = command;
+        }
+
+        public DataFileBookmark( byte[] data )
+        {
+            if ( data == null )
+                throw new ArgumentNullException( nameof( data ) );
+
+            var stream = new MemoryStream( data );
+            var reader = new BinaryReader( stream, Encoding.UTF8, true );
+            Position = reader.ReadInt64();
+            StateTag = reader.ReadBoolean() ? reader.ReadString() : null;
+            WhenExecuted = ReadDateTime( reader );
+            Command = reader.ReadBoolean() ? reader.ReadString() : null;
+        }
+
+        public byte[] CreateLink()
+        {
+            var stream = new MemoryStream();
+            var writer = new BinaryWriter( stream, Encoding.UTF8, true );
+            writer.Write( Position );
+
+            writer.Write( StateTag != null );
+            if ( StateTag != null ) writer.Write( StateTag );
+
+            WriteDateTime( writer, WhenExecuted );
+
+            writer.Write( Command != null );
+            if ( Command != null ) writer.Write( Command );
+
+            return stream.ToArray();
+        }
+
+        private static DateTime ReadDateTime( BinaryReader reader )
+        {
+            var kind = reader.ReadByte();
+            var ticks = reader.ReadInt64();
+            return new DateTime( ticks, (DateTimeKind) kind );
+        }
+
+        private static void WriteDateTime( BinaryWriter writer, DateTime value )
+        {
+            writer.Write( (byte) value.Kind );
+            writer.Write( value.Ticks );
         }
 
         public string StateTag { get; }
 
-        public DateTime WhenExecuted => throw new NotImplementedException();
+        public DateTime WhenExecuted { get; }
 
         public string Command { get; }
 
