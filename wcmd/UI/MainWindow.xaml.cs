@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Windows;
@@ -29,7 +30,6 @@ namespace wcmd.UI
         private readonly Thread _parentProcessObserver;
         private readonly Thread _consoleWindowObserver;
 
-        //private FullCachedDataFile _dataFile;
         private IDataFile _dataFile;
         private IStoredCommand _storedCommand;
         private Searcher _searcher;
@@ -43,23 +43,26 @@ namespace wcmd.UI
 
             _trace = DiagnosticsCenter.GetTraceSource( nameof( MainWindow ) );
 
-            var culture = Thread.CurrentThread.CurrentCulture;
-            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.DisplayName ), culture.DisplayName );
-            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.EnglishName ), culture.EnglishName );
-            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.IsNeutralCulture ), culture.IsNeutralCulture );
-            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.Name ), culture.Name );
-            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.KeyboardLayoutId ), culture.KeyboardLayoutId );
-            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.NativeName ), culture.NativeName );
-            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.ThreeLetterISOLanguageName ), culture.ThreeLetterISOLanguageName );
-            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.ThreeLetterWindowsLanguageName ), culture.ThreeLetterWindowsLanguageName );
-            _trace.TraceInformation( "Culture {0}: {1}", nameof( culture.TwoLetterISOLanguageName ), culture.TwoLetterISOLanguageName );
+            var inputLanguage = InputLanguage.CurrentInputLanguage;
+            _trace.TraceInformation( "Input language {0}: {1}", nameof( inputLanguage.LayoutName ), inputLanguage.LayoutName );
+
+            var culture = inputLanguage.Culture;
+            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.DisplayName ), culture.DisplayName );
+            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.EnglishName ), culture.EnglishName );
+            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.IsNeutralCulture ), culture.IsNeutralCulture );
+            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.Name ), culture.Name );
+            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.KeyboardLayoutId ), culture.KeyboardLayoutId );
+            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.NativeName ), culture.NativeName );
+            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.ThreeLetterISOLanguageName ), culture.ThreeLetterISOLanguageName );
+            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.ThreeLetterWindowsLanguageName ), culture.ThreeLetterWindowsLanguageName );
+            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.TwoLetterISOLanguageName ), culture.TwoLetterISOLanguageName );
 
             var textInfo = culture.TextInfo;
-            _trace.TraceInformation( "Culture text info {0}: {1}", nameof( textInfo.ANSICodePage ), textInfo.ANSICodePage );
-            _trace.TraceInformation( "Culture text info {0}: {1}", nameof( textInfo.CultureName ), textInfo.CultureName );
-            _trace.TraceInformation( "Culture text info {0}: {1}", nameof( textInfo.EBCDICCodePage ), textInfo.EBCDICCodePage );
-            _trace.TraceInformation( "Culture text info {0}: {1}", nameof( textInfo.MacCodePage ), textInfo.MacCodePage );
-            _trace.TraceInformation( "Culture text info {0}: {1}", nameof( textInfo.OEMCodePage ), textInfo.OEMCodePage );
+            _trace.TraceInformation( "Input language culture text info {0}: {1}", nameof( textInfo.ANSICodePage ), textInfo.ANSICodePage );
+            _trace.TraceInformation( "Input language culture text info {0}: {1}", nameof( textInfo.CultureName ), textInfo.CultureName );
+            _trace.TraceInformation( "Input language culture text info {0}: {1}", nameof( textInfo.EBCDICCodePage ), textInfo.EBCDICCodePage );
+            _trace.TraceInformation( "Input language culture text info {0}: {1}", nameof( textInfo.MacCodePage ), textInfo.MacCodePage );
+            _trace.TraceInformation( "Input language culture text info {0}: {1}", nameof( textInfo.OEMCodePage ), textInfo.OEMCodePage );
 
             _parentProcess = Process.GetProcessById( parentPid );
             _parentProcessObserver = new Thread( ParentProcessObserver );
@@ -80,11 +83,18 @@ namespace wcmd.UI
             _trace.TraceInformation( "Reading configuration..." );
             var config = Configuration.LoadDefault() ?? Configuration.CreateDefault();
 
-            //_dataFile = new FullCachedDataFile( new DataFile( config ) );
-            //_dataFile.DumpRecords();
-            _dataFile = new CachedDataFile( new DataFile( config ) );
+            // TODO: Should be provided by config.
+            var inboundFile = new FileInfo( Path.Combine( config.LocalDbDirectory.FullName, "inbound.dat" ) );
+
+            var inboundStore = new DataFile( inboundFile );
+            var localStore = new DataFile( config );
+
+            _dataFile = new CachedDataFile( localStore );
             _storedCommand = _dataFile.Eof;
-            _searcher = new Searcher( _dataFile );
+
+            // The localStore must be the last.
+            var searchStore = new CachedDataFile( new MergedDataStore( new[] {inboundStore, localStore} ) );
+            _searcher = new Searcher( searchStore );
 
             if ( config.SharedDirectory != null )
             {
@@ -287,6 +297,7 @@ namespace wcmd.UI
             {
                 var previous = _dataFile.GetPrevious( _storedCommand );
                 SetCommand( previous );
+                _storedCommand = previous;
                 e.Handled = true;
             }
 
@@ -294,6 +305,7 @@ namespace wcmd.UI
             {
                 var next = _dataFile.GetNext( _storedCommand );
                 SetCommand( next );
+                _storedCommand = next;
                 e.Handled = true;
             }
         }
@@ -310,7 +322,10 @@ namespace wcmd.UI
             dialog.ShowDialog();
             var selectedCommand = dialog.SelectedCommand;
             if ( selectedCommand != null )
+            {
                 SetCommand( dialog.SelectedCommand );
+                _storedCommand = _dataFile.Eof;
+            }
         }
 
         private void SetCommand( IStoredCommand item )
@@ -322,8 +337,6 @@ namespace wcmd.UI
                 RtCommand.Document.Blocks.Add( new Paragraph( new Run( text ) ) );
                 RtCommand.CaretPosition = RtCommand.CaretPosition.DocumentStart;
             }
-
-            _storedCommand = item;
         }
 
         private void ExecuteCommand()
@@ -336,11 +349,11 @@ namespace wcmd.UI
             User32.SetForegroundWindow( Kernel32.GetConsoleWindow() );
             var now = DateTime.Now;
 
-            text = AdjustForAccentSymbols( text );
+            var adjustedText = AdjustForAccentSymbols( text );
 
-            if ( !text.Contains( "~" ) )
+            if ( !adjustedText.Contains( "~" ) )
             {
-                SendKeys.SendWait( text + "\r" );
+                SendKeys.SendWait( adjustedText + "\r" );
                 Activate();
                 document.Blocks.Clear();
             }
@@ -355,10 +368,10 @@ namespace wcmd.UI
 
         private string AdjustForAccentSymbols( string text )
         {
-            var keyboardLayout = Thread.CurrentThread.CurrentCulture.KeyboardLayoutId;
+            var keyboardLayout = InputLanguage.CurrentInputLanguage.LayoutName;
 
             // TODO: Make this configurable.
-            if ( keyboardLayout != 1033 )
+            if ( keyboardLayout != "United States-International" )
             {
                 _trace.TraceInformation( "Keyboard layout ({0}) doesn't require adjust for accent letters.", keyboardLayout );
                 return text;

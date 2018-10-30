@@ -247,12 +247,76 @@ namespace wcmd.DataFiles
         {
             AssertAligned( pos );
             var stream = reader.BaseStream;
+            for ( ;; )
+            {
+                if ( pos >= stream.Length )
+                {
+                    _trace.TraceInformation( "End of stream found at offset {0}.", pos );
+                    return null;
+                }
+
+                stream.Position = pos;
+
+                try
+                {
+                    var record = ReadRecord( reader );
+                    _trace.TraceInformation( "A record was read at offset {0}.", pos );
+                    pos = Align( stream.Position );
+                    return record;
+                }
+                catch ( DataCorruptionException ex )
+                {
+                    _trace.TraceError( "{0}", ex );
+                    pos = SearchNextOpenMark( stream, pos );
+                }
+            }
+        }
+
+        private long SearchNextOpenMark( Stream stream, long pos )
+        {
             if ( pos >= stream.Length )
-                return null;
-            stream.Position = pos;
-            var record = ReadRecord( reader );
-            pos = Align( stream.Position );
-            return record;
+                return stream.Length;
+
+            // Read chunks of 4 kib searching for the open mark.
+
+            pos = Align( pos );
+            var buffer = new byte[4096];
+
+            for ( ;; )
+            {
+                stream.Position = pos;
+                var len = stream.Read( buffer, 0, buffer.Length );
+
+                // When Stream.Read returns zero, we have reached EOF, as described in the API doc.
+                if ( len == 0 )
+                    return pos;
+
+                // Scan the buffer using the same logic we use for normal read: BinaryReader, ReadUInt32, etc.
+                var lastPos = pos;
+                try
+                {
+                    using ( var tempStream = new MemoryStream( buffer, 0, len, false ) )
+                    using ( var reader = new BinaryReader( tempStream, Encoding.UTF8, true ) )
+                    {
+                        for ( ;; )
+                        {
+                            // Determine the absolute position.
+                            lastPos = pos + tempStream.Position;
+                            AssertAligned( lastPos );
+
+                            var magic = reader.ReadUInt32();
+                            if ( magic == OpenMark )
+                                return lastPos;
+                        }
+                    }
+                }
+                catch ( EndOfStreamException )
+                {
+                    if ( lastPos == pos )
+                        throw new Exception( "Unable to advance scanning position." );
+                    pos = lastPos;
+                }
+            }
         }
 
         private DataFileRecord ReadRecord( BinaryReader reader )

@@ -232,21 +232,19 @@ namespace wcmd.DataFiles
 
         private class CacheEntry : IStoredCommand
         {
-            private readonly string _stateTag;
             public IStoredCommand _inner;
             public CacheEntry _previous;
             public CacheEntry _next;
 
             public CacheEntry( IStoredCommand inner, CacheEntry previous, CacheEntry next )
             {
-                _stateTag = inner?.StateTag;
                 _inner = inner ?? throw new ArgumentNullException( nameof( inner ) );
                 Command = inner.Command;
                 _previous = previous;
                 _next = next;
             }
 
-            public string StateTag => _stateTag;
+            public string StateTag => _inner.StateTag;
 
             public DateTime WhenExecuted => throw new NotImplementedException();
 

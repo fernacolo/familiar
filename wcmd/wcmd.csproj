@@ -63,6 +63,7 @@
     <Compile Include="DataFiles\DataFileRecord.cs" />
     <Compile Include="DataFiles\IDataFile.cs" />
     <Compile Include="DataFiles\InboundReplication.cs" />
+    <Compile Include="DataFiles\MergedDataStore.cs" />
     <Compile Include="Diagnostics\DiagnosticsCenter.cs" />
     <Compile Include="Native\Ntdll.cs" />
     <Compile Include="Native\VirtualKeyCode.cs" />
