@@ -4,9 +4,9 @@ using System.Diagnostics;
 
 namespace wcmd.DataFiles
 {
-    internal class CachedDataFile : IDataFile
+    internal class CachedDataStore : IDataStore
     {
-        private readonly IDataFile _inner;
+        private readonly IDataStore _inner;
         private readonly CacheEntry _bof;
         private readonly CacheEntry _eof;
         private readonly List<WeakReference<CacheEntry>> _lastEntries = new List<WeakReference<CacheEntry>>();
@@ -18,18 +18,18 @@ namespace wcmd.DataFiles
 
         public string FileName => _inner.FileName;
 
-        public CachedDataFile( IDataFile inner )
+        public CachedDataStore( IDataStore inner )
         {
             _inner = inner ?? throw new ArgumentNullException( nameof( inner ) );
             _bof = new CacheEntry( inner.Bof, null, null );
             _eof = new CacheEntry( inner.Eof, null, null );
         }
 
-        public IStoredCommand Bof => _bof;
+        public IStoredItem Bof => _bof;
 
-        public IStoredCommand Eof => _eof;
+        public IStoredItem Eof => _eof;
 
-        public IStoredCommand Write( DateTime whenExecuted, string command, ref string stateTag )
+        public IStoredItem Write( DateTime whenExecuted, string command, ref string stateTag )
         {
             if ( stateTag != null )
                 throw new NotImplementedException();
@@ -59,7 +59,7 @@ namespace wcmd.DataFiles
             return newLast;
         }
 
-        public IStoredCommand GetPrevious( IStoredCommand item )
+        public IStoredItem GetPrevious( IStoredItem item )
         {
             if ( item == null )
                 throw new ArgumentNullException( nameof( item ) );
@@ -114,7 +114,7 @@ namespace wcmd.DataFiles
             return bm._previous;
         }
 
-        public IStoredCommand GetNext( IStoredCommand item )
+        public IStoredItem GetNext( IStoredItem item )
         {
             if ( item == null )
                 throw new ArgumentNullException( nameof( item ) );
@@ -220,23 +220,23 @@ namespace wcmd.DataFiles
             _lastEntries.Add( new WeakReference<CacheEntry>( entry ) );
         }
 
-        public byte[] CreateLink( IStoredCommand item )
+        public byte[] CreateLink( IStoredItem item )
         {
             throw new NotImplementedException();
         }
 
-        public IStoredCommand ResolveLink( byte[] link )
+        public IStoredItem ResolveLink( byte[] link )
         {
             throw new NotImplementedException();
         }
 
-        private class CacheEntry : IStoredCommand
+        private class CacheEntry : IStoredItem
         {
-            public IStoredCommand _inner;
+            public IStoredItem _inner;
             public CacheEntry _previous;
             public CacheEntry _next;
 
-            public CacheEntry( IStoredCommand inner, CacheEntry previous, CacheEntry next )
+            public CacheEntry( IStoredItem inner, CacheEntry previous, CacheEntry next )
             {
                 _inner = inner ?? throw new ArgumentNullException( nameof( inner ) );
                 Command = inner.Command;

@@ -7,9 +7,9 @@ namespace wcmd
     public sealed class Findings
     {
         private readonly Matcher _matcher;
-        private readonly List<IStoredCommand> _foundItems;
+        private readonly List<IStoredItem> _foundItems;
 
-        public Findings( Matcher matcher, IReadOnlyList<IStoredCommand> foundItems )
+        public Findings( Matcher matcher, IReadOnlyList<IStoredItem> foundItems )
         {
             if ( matcher == null )
                 throw new ArgumentNullException( nameof( matcher ) );
@@ -18,10 +18,10 @@ namespace wcmd
                 throw new ArgumentNullException( nameof( foundItems ) );
 
             _matcher = matcher;
-            _foundItems = new List<IStoredCommand>( foundItems );
+            _foundItems = new List<IStoredItem>( foundItems );
         }
 
         public Matcher Matcher => _matcher;
-        public IReadOnlyList<IStoredCommand> FoundItems => _foundItems;
+        public IReadOnlyList<IStoredItem> FoundItems => _foundItems;
     }
 }

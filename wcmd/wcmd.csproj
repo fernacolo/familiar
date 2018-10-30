@@ -58,10 +58,10 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
-    <Compile Include="DataFiles\CachedDataFile.cs" />
+    <Compile Include="DataFiles\CachedDataStore.cs" />
     <Compile Include="DataFiles\DataCorruptionException.cs" />
     <Compile Include="DataFiles\DataFileRecord.cs" />
-    <Compile Include="DataFiles\IDataFile.cs" />
+    <Compile Include="DataFiles\IDataStore.cs" />
     <Compile Include="DataFiles\InboundReplication.cs" />
     <Compile Include="DataFiles\MergedDataStore.cs" />
     <Compile Include="Diagnostics\DiagnosticsCenter.cs" />
@@ -78,7 +78,7 @@
     <Compile Include="Sessions\Configuration.cs" />
     <Compile Include="Sessions\Constants.cs" />
     <Compile Include="DataFiles\Serializer.cs" />
-    <Compile Include="DataFiles\DataFile.cs" />
+    <Compile Include="DataFiles\FileStore.cs" />
     <Compile Include="DataFiles\SizeOnlyStream.cs" />
     <Compile Include="DataFiles\ReplicationJob.cs" />
     <Compile Include="UI\SearchWindow.xaml.cs">

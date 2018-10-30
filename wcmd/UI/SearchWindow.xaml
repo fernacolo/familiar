@@ -25,7 +25,7 @@
                  KeyDown="LbSearchResults_KeyDown"
                  MouseDoubleClick="LbSearchResults_MouseDoubleClick">
             <ListBox.ItemTemplate>
-                <DataTemplate DataType="dataFiles:IStoredCommand">
+                <DataTemplate DataType="dataFiles:IStoredItem">
                     <TextBlock Text="{Binding Path=Command}" />
                 </DataTemplate>
             </ListBox.ItemTemplate>

@@ -67,7 +67,7 @@ namespace wcmd.DataFiles
                                 sourceFiles.Add( sourceFile );
                             }
 
-                            IDataFile target = null;
+                            IDataStore target = null;
 
                             while ( sourceFiles.Count > 0 )
                             {
@@ -106,10 +106,10 @@ namespace wcmd.DataFiles
             }
         }
 
-        private void Replicate( FileInfo sourceFile, FileReplicationState state, ref IDataFile target )
+        private void Replicate( FileInfo sourceFile, FileReplicationState state, ref IDataStore target )
         {
             _trace.TraceInformation( "Verifying for modifications inbound file: {0}.", sourceFile.FullName );
-            var source = new DataFile( sourceFile );
+            var source = new FileStore( sourceFile );
 
             var lastReadLink = state.LastReadLink;
             var lastRead = lastReadLink == null ? source.Bof : source.ResolveLink( lastReadLink );
@@ -132,7 +132,7 @@ namespace wcmd.DataFiles
                 {
                     var targetFile = new FileInfo( Path.Combine( _destination.FullName, "inbound.dat" ) );
                     _trace.TraceInformation( "Preparing file to update: {0}.", targetFile.FullName );
-                    target = new DataFile( targetFile );
+                    target = new FileStore( targetFile );
                 }
 
                 target.Write( newRecord.WhenExecuted, newRecord.Command, ref stateTag );

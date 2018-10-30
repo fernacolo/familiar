@@ -2,7 +2,7 @@
 
 namespace wcmd.DataFiles
 {
-    public interface IDataFile
+    public interface IDataStore
     {
         /// <summary>
         /// A string that represents the current state of this store.
@@ -18,12 +18,12 @@ namespace wcmd.DataFiles
         /// <summary>
         /// A pseudo-record that points to before the last one, suitable for calling <see cref="GetNext"/>.
         /// </summary>
-        IStoredCommand Bof { get; }
+        IStoredItem Bof { get; }
 
         /// <summary>
         /// A pseudo-record that points to after the last one, suitable for calling <see cref="GetPrevious"/>.
         /// </summary>
-        IStoredCommand Eof { get; }
+        IStoredItem Eof { get; }
 
         /// <summary>
         /// Stores an executed command, and returns an object that represents it.
@@ -33,31 +33,31 @@ namespace wcmd.DataFiles
         /// If <see cref="stateTag"/> is not null, then the write is only attempted when <see cref="StateTag"/> matches the specified value (conditional operation).
         /// If the condition is not met, this method returns null.
         /// </remarks>
-        IStoredCommand Write( DateTime whenExecuted, string command, ref string stateTag );
+        IStoredItem Write( DateTime whenExecuted, string command, ref string stateTag );
 
         /// <summary>
         /// Returns the command that appears before the specified one, or null if the specified one is the first.
         /// </summary>
-        IStoredCommand GetPrevious( IStoredCommand item );
+        IStoredItem GetPrevious( IStoredItem item );
 
         /// <summary>
         /// Returns the command that appears after the specified one, or null if the specified one is the last.
         /// </summary>
-        IStoredCommand GetNext( IStoredCommand item );
+        IStoredItem GetNext( IStoredItem item );
 
         /// <summary>
         /// Creates a link for the specified item. The item can be recovered with <see cref="ResolveLink"/>.
         /// </summary>
-        byte[] CreateLink( IStoredCommand item );
+        byte[] CreateLink( IStoredItem item );
 
         /// <summary>
         /// Resolves a link into an item.
         /// </summary>
         /// <param name="link">An array of bytes obtained with a call to <see cref="CreateLink"/></param>
-        IStoredCommand ResolveLink( byte[] link );
+        IStoredItem ResolveLink( byte[] link );
     }
 
-    public interface IStoredCommand
+    public interface IStoredItem
     {
         /// <summary>
         /// The store state when this record was read.

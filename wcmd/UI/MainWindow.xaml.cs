@@ -30,8 +30,8 @@ namespace wcmd.UI
         private readonly Thread _parentProcessObserver;
         private readonly Thread _consoleWindowObserver;
 
-        private IDataFile _dataFile;
-        private IStoredCommand _storedCommand;
+        private IDataStore _dataStore;
+        private IStoredItem _storedItem;
         private Searcher _searcher;
         private InboundReplication _inboundMonitor;
         private ReplicationJob _outboundMonitor;
@@ -86,14 +86,14 @@ namespace wcmd.UI
             // TODO: Should be provided by config.
             var inboundFile = new FileInfo( Path.Combine( config.LocalDbDirectory.FullName, "inbound.dat" ) );
 
-            var inboundStore = new DataFile( inboundFile );
-            var localStore = new DataFile( config );
+            var inboundStore = new FileStore( inboundFile );
+            var localStore = new FileStore( config );
 
-            _dataFile = new CachedDataFile( localStore );
-            _storedCommand = _dataFile.Eof;
+            _dataStore = new CachedDataStore( localStore );
+            _storedItem = _dataStore.Eof;
 
             // The localStore must be the last.
-            var searchStore = new CachedDataFile( new MergedDataStore( new[] {inboundStore, localStore} ) );
+            var searchStore = new CachedDataStore( new MergedDataStore( new[] {inboundStore, localStore} ) );
             _searcher = new Searcher( searchStore );
 
             if ( config.SharedDirectory != null )
@@ -118,7 +118,7 @@ namespace wcmd.UI
 
         private bool IsMyDataFile( string fileName )
         {
-            return string.Equals( _dataFile.FileName, fileName, StringComparison.OrdinalIgnoreCase );
+            return string.Equals( _dataStore.FileName, fileName, StringComparison.OrdinalIgnoreCase );
         }
 
         private bool IsNotMyDataFile( string fileName )
@@ -293,19 +293,19 @@ namespace wcmd.UI
 
         private void RtCommand_PreviewKeyDown( object sender, KeyEventArgs e )
         {
-            if ( e.Key == Key.Up && _storedCommand != _dataFile.Bof )
+            if ( e.Key == Key.Up && _storedItem != _dataStore.Bof )
             {
-                var previous = _dataFile.GetPrevious( _storedCommand );
+                var previous = _dataStore.GetPrevious( _storedItem );
                 SetCommand( previous );
-                _storedCommand = previous;
+                _storedItem = previous;
                 e.Handled = true;
             }
 
-            if ( e.Key == Key.Down && _storedCommand != _dataFile.Eof )
+            if ( e.Key == Key.Down && _storedItem != _dataStore.Eof )
             {
-                var next = _dataFile.GetNext( _storedCommand );
+                var next = _dataStore.GetNext( _storedItem );
                 SetCommand( next );
-                _storedCommand = next;
+                _storedItem = next;
                 e.Handled = true;
             }
         }
@@ -320,17 +320,17 @@ namespace wcmd.UI
             var dialog = new SearchWindow( _searcher );
             dialog.Owner = this;
             dialog.ShowDialog();
-            var selectedCommand = dialog.SelectedCommand;
+            var selectedCommand = dialog.SelectedItem;
             if ( selectedCommand != null )
             {
-                SetCommand( dialog.SelectedCommand );
-                _storedCommand = _dataFile.Eof;
+                SetCommand( dialog.SelectedItem );
+                _storedItem = _dataStore.Eof;
             }
         }
 
-        private void SetCommand( IStoredCommand item )
+        private void SetCommand( IStoredItem item )
         {
-            if ( item != _dataFile.Bof && item != _dataFile.Eof )
+            if ( item != _dataStore.Bof && item != _dataStore.Eof )
             {
                 RtCommand.Document.Blocks.Clear();
                 var text = item.Command.TrimEnd( '\r', '\n', ' ', '\t' );
@@ -363,7 +363,7 @@ namespace wcmd.UI
                 );
 
             string stateTag = null;
-            _storedCommand = _dataFile.Write( now, text, ref stateTag );
+            _storedItem = _dataStore.Write( now, text, ref stateTag );
         }
 
         private string AdjustForAccentSymbols( string text )

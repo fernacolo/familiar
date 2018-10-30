@@ -11,17 +11,17 @@ namespace wcmd
     public sealed class Searcher
     {
         private readonly TraceSource _trace;
-        private readonly IDataFile _dataFile;
+        private readonly IDataStore _dataStore;
         private readonly Thread _thread;
         private readonly SemaphoreSlim _newRequest;
         private readonly ConcurrentQueue<Request> _requests;
         private readonly int _maxResults = 50;
         private Findings _findings;
 
-        public Searcher( IDataFile dataFile )
+        public Searcher( IDataStore dataStore )
         {
             _trace = DiagnosticsCenter.GetTraceSource( nameof( Searcher ) );
-            _dataFile = dataFile;
+            _dataStore = dataStore;
             _newRequest = new SemaphoreSlim( 0, int.MaxValue );
             _requests = new ConcurrentQueue<Request>();
             _thread = new Thread( BackgroundThread );
@@ -74,7 +74,7 @@ namespace wcmd
             var currentMatcher = (Matcher) null;
             var currentResults = new List<Command>();
             var currentCommands = new HashSet<string>();
-            var lastRead = _dataFile.Eof;
+            var lastRead = _dataStore.Eof;
             var searchCallback = (Action) null;
 
             for ( ;; )
@@ -123,7 +123,7 @@ namespace wcmd
                             // The new search text does not contain the previous one. We need to start from zero.
                             currentResults.Clear();
                             currentCommands.Clear();
-                            lastRead = _dataFile.Eof;
+                            lastRead = _dataStore.Eof;
                             changed = true;
                         }
 
@@ -141,7 +141,7 @@ namespace wcmd
                             // We can't produce more results.
                             break;
 
-                        if ( lastRead == _dataFile.Bof )
+                        if ( lastRead == _dataStore.Bof )
                             // We've already read through entire file.
                             break;
 
@@ -149,8 +149,8 @@ namespace wcmd
                         var sw = Stopwatch.StartNew();
                         do
                         {
-                            lastRead = _dataFile.GetPrevious( lastRead );
-                            if ( lastRead == _dataFile.Bof )
+                            lastRead = _dataStore.GetPrevious( lastRead );
+                            if ( lastRead == _dataStore.Bof )
                                 break;
 
                             var command = new Command( lastRead );
@@ -191,7 +191,7 @@ namespace wcmd
             if ( changed )
             {
                 _trace.TraceInformation( "New findings: {0}, {1} items", matcher.Term, foundItems.Count );
-                var items = new List<IStoredCommand>( foundItems.Count );
+                var items = new List<IStoredItem>( foundItems.Count );
                 foreach ( var command in foundItems )
                     items.Add( command.Stored );
 

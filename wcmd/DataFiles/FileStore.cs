@@ -8,25 +8,25 @@ using wcmd.Sessions;
 
 namespace wcmd.DataFiles
 {
-    internal sealed class DataFile : IDataFile
+    internal sealed class FileStore : IDataStore
     {
         private readonly TraceSource _trace;
         private readonly FileInfo _fileInfo;
 
-        public DataFile( Configuration config )
+        public FileStore( Configuration config )
         {
             if ( config == null )
                 throw new ArgumentNullException( nameof( config ) );
-            _trace = DiagnosticsCenter.GetTraceSource( $"{nameof( DataFile )} - {config.SessionId}" );
+            _trace = DiagnosticsCenter.GetTraceSource( $"{nameof( FileStore )} - {config.SessionId}" );
             var dataFileName = Path.Combine( config.LocalDbDirectory.ToString(), $"{config.SessionId}.dat" );
             _fileInfo = new FileInfo( dataFileName );
         }
 
-        public DataFile( FileInfo fileInfo )
+        public FileStore( FileInfo fileInfo )
         {
             if ( fileInfo == null )
                 throw new ArgumentNullException( nameof( fileInfo ) );
-            _trace = DiagnosticsCenter.GetTraceSource( $"{nameof( DataFile )} - {fileInfo.FullName}" );
+            _trace = DiagnosticsCenter.GetTraceSource( $"{nameof( FileStore )} - {fileInfo.FullName}" );
             _fileInfo = fileInfo;
         }
 
@@ -70,14 +70,14 @@ namespace wcmd.DataFiles
             }
         }
 
-        private readonly IStoredCommand _bof = new DataFileBookmark( null, -1L, DateTime.MinValue, null );
-        private readonly IStoredCommand _eof = new DataFileBookmark( null, long.MaxValue, DateTime.MaxValue, null );
+        private readonly IStoredItem _bof = new FileStoreItem( null, -1L, DateTime.MinValue, null );
+        private readonly IStoredItem _eof = new FileStoreItem( null, long.MaxValue, DateTime.MaxValue, null );
 
-        public IStoredCommand Bof => _bof;
+        public IStoredItem Bof => _bof;
 
-        public IStoredCommand Eof => _eof;
+        public IStoredItem Eof => _eof;
 
-        public IStoredCommand Write( DateTime whenExecuted, string command, ref string stateTag )
+        public IStoredItem Write( DateTime whenExecuted, string command, ref string stateTag )
         {
             var record = new DataFileRecord
             {
@@ -90,7 +90,7 @@ namespace wcmd.DataFiles
             if ( position == -1L )
                 return null;
 
-            return new DataFileBookmark( stateTag, position, whenExecuted, command );
+            return new FileStoreItem( stateTag, position, whenExecuted, command );
         }
 
         private long WriteRecord( DataFileRecord record, ref string stateTag )
@@ -134,14 +134,14 @@ namespace wcmd.DataFiles
             record.WriteTo( writer );
         }
 
-        public IStoredCommand GetPrevious( IStoredCommand item )
+        public IStoredItem GetPrevious( IStoredItem item )
         {
             if ( item == null )
                 throw new ArgumentNullException( nameof( item ) );
             if ( item == _bof )
                 throw new ArgumentException( "Cannot read before BOF." );
 
-            var bm = (DataFileBookmark) item;
+            var bm = (FileStoreItem) item;
             if ( bm.Position == 0L )
                 return _bof;
 
@@ -155,19 +155,19 @@ namespace wcmd.DataFiles
                         return _bof;
                     var record = ReadPreviousRecord( reader, ref position );
                     if ( record.Type == DataFileRecord.CommandV1 )
-                        return new DataFileBookmark( StateTag, position, record.WhenExecuted, record.Command );
+                        return new FileStoreItem( StateTag, position, record.WhenExecuted, record.Command );
                 }
             }
         }
 
-        public IStoredCommand GetNext( IStoredCommand item )
+        public IStoredItem GetNext( IStoredItem item )
         {
             if ( item == null )
                 throw new ArgumentNullException( nameof( item ) );
             if ( item == _eof )
                 throw new ArgumentException( "Cannot read after EOF." );
 
-            var bm = (DataFileBookmark) item;
+            var bm = (FileStoreItem) item;
 
             using ( var reader = GetReader() )
             {
@@ -188,25 +188,25 @@ namespace wcmd.DataFiles
                     if ( record == null )
                         return _eof;
                     if ( record.Type == DataFileRecord.CommandV1 )
-                        return new DataFileBookmark( StateTag, lastPosition, record.WhenExecuted, record.Command );
+                        return new FileStoreItem( StateTag, lastPosition, record.WhenExecuted, record.Command );
                 }
             }
         }
 
-        public byte[] CreateLink( IStoredCommand item )
+        public byte[] CreateLink( IStoredItem item )
         {
             if ( item == _bof )
                 return new byte[] {1};
             if ( item == _eof )
                 return new byte[] {2};
 
-            return ((DataFileBookmark) item).CreateLink();
+            return ((FileStoreItem) item).CreateLink();
         }
 
-        public IStoredCommand ResolveLink( byte[] link )
+        public IStoredItem ResolveLink( byte[] link )
         {
             if ( link.Length != 1 )
-                return new DataFileBookmark( link );
+                return new FileStoreItem( link );
 
             switch ( link[0] )
             {
@@ -504,9 +504,9 @@ namespace wcmd.DataFiles
         }
     }
 
-    internal class DataFileBookmark : IStoredCommand
+    internal class FileStoreItem : IStoredItem
     {
-        public DataFileBookmark( string stateTag, long position, DateTime whenExecuted, string command )
+        public FileStoreItem( string stateTag, long position, DateTime whenExecuted, string command )
         {
             StateTag = stateTag;
             Position = position;
@@ -514,7 +514,7 @@ namespace wcmd.DataFiles
             Command = command;
         }
 
-        public DataFileBookmark( byte[] data )
+        public FileStoreItem( byte[] data )
         {
             if ( data == null )
                 throw new ArgumentNullException( nameof( data ) );

@@ -5,10 +5,10 @@ namespace wcmd
 {
     public sealed class Command
     {
-        private readonly IStoredCommand _stored;
+        private readonly IStoredItem _stored;
         private string _allLowers;
 
-        public Command( IStoredCommand stored )
+        public Command( IStoredItem stored )
         {
             _stored = stored ?? throw new ArgumentNullException( nameof( stored ) );
         }
@@ -18,7 +18,7 @@ namespace wcmd
             _allLowers = Original.ToLowerInvariant();
         }
 
-        public IStoredCommand Stored => _stored;
+        public IStoredItem Stored => _stored;
         public string Original => _stored.Command;
         public string AllLowers => _allLowers;
     }

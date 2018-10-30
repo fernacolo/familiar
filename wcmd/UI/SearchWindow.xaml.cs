@@ -23,14 +23,14 @@ namespace wcmd.UI
         {
             _trace = DiagnosticsCenter.GetTraceSource( nameof(SearchWindow) );
             _searcher = searcher ?? throw new ArgumentNullException( nameof( searcher ) );
-            CurrentFindings = new ObservableCollection<IStoredCommand>();
+            CurrentFindings = new ObservableCollection<IStoredItem>();
             DataContext = this;
             InitializeComponent();
         }
 
-        public ObservableCollection<IStoredCommand> CurrentFindings { get; }
+        public ObservableCollection<IStoredItem> CurrentFindings { get; }
 
-        public IStoredCommand SelectedCommand { get; private set; }
+        public IStoredItem SelectedItem { get; private set; }
 
         private void OnLoaded( object sender, RoutedEventArgs e )
         {
@@ -94,13 +94,13 @@ namespace wcmd.UI
             CloseAndReturnSelection( sender, e );
         }
 
-        private IStoredCommand GetSelected()
+        private IStoredItem GetSelected()
         {
             var idx = LbSearchResults.SelectedIndex;
             var count = LbSearchResults.Items.Count;
             if ( idx < 0 || idx >= count )
                 return null;
-            return (IStoredCommand) LbSearchResults.Items[idx];
+            return (IStoredItem) LbSearchResults.Items[idx];
         }
 
         private void MoveSelected( int move )
@@ -117,14 +117,14 @@ namespace wcmd.UI
         private void CloseAndReturnSelection( object sender, RoutedEventArgs e )
         {
             e.Handled = true;
-            SelectedCommand = GetSelected();
+            SelectedItem = GetSelected();
             _searcher.CancelSearch();
             Close();
         }
 
         private void CloseAndReturnNull( object sender, ExecutedRoutedEventArgs e )
         {
-            SelectedCommand = null;
+            SelectedItem = null;
             _searcher.CancelSearch();
             Close();
         }

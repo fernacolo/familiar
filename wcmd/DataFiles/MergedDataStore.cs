@@ -5,19 +5,19 @@ using System.Text;
 
 namespace wcmd.DataFiles
 {
-    internal sealed class MergedDataStore : IDataFile
+    internal sealed class MergedDataStore : IDataStore
     {
-        private readonly IDataFile[] _innerStores;
+        private readonly IDataStore[] _innerStores;
 
-        public MergedDataStore( IReadOnlyList<IDataFile> stores )
+        public MergedDataStore( IReadOnlyList<IDataStore> stores )
         {
             if ( stores == null )
                 throw new ArgumentNullException( nameof( stores ) );
 
-            _innerStores = new IDataFile[stores.Count];
+            _innerStores = new IDataStore[stores.Count];
 
-            var bofItems = new IStoredCommand[_innerStores.Length];
-            var eofItems = new IStoredCommand[_innerStores.Length];
+            var bofItems = new IStoredItem[_innerStores.Length];
+            var eofItems = new IStoredItem[_innerStores.Length];
             for ( var i = 0; i < _innerStores.Length; ++i )
             {
                 _innerStores[i] = stores[i];
@@ -42,11 +42,11 @@ namespace wcmd.DataFiles
 
         public string FileName => throw new NotImplementedException();
 
-        public IStoredCommand Bof { get; }
+        public IStoredItem Bof { get; }
 
-        public IStoredCommand Eof { get; }
+        public IStoredItem Eof { get; }
 
-        public IStoredCommand Write( DateTime whenExecuted, string command, ref string stateTag )
+        public IStoredItem Write( DateTime whenExecuted, string command, ref string stateTag )
         {
             // We always write to the last store.
             var storeToWrite = _innerStores[_innerStores.Length - 1];
@@ -70,10 +70,10 @@ namespace wcmd.DataFiles
             return GetPrevious( Eof );
         }
 
-        public IStoredCommand GetPrevious( IStoredCommand item )
+        public IStoredItem GetPrevious( IStoredItem item )
         {
             var mergedItem = (MergedDataStoreItem) item;
-            var activeItems = (IStoredCommand[]) mergedItem.Items.Clone();
+            var activeItems = (IStoredItem[]) mergedItem.Items.Clone();
             var activeItemIndex = mergedItem.ItemIndex;
 
             for ( var i = 0; i < _innerStores.Length; ++i )
@@ -99,36 +99,36 @@ namespace wcmd.DataFiles
             return Bof;
         }
 
-        public IStoredCommand GetNext( IStoredCommand item )
+        public IStoredItem GetNext( IStoredItem item )
         {
             throw new NotImplementedException();
         }
 
-        public byte[] CreateLink( IStoredCommand item )
+        public byte[] CreateLink( IStoredItem item )
         {
             throw new NotImplementedException();
         }
 
-        public IStoredCommand ResolveLink( byte[] link )
+        public IStoredItem ResolveLink( byte[] link )
         {
             throw new NotImplementedException();
         }
     }
 
-    internal class MergedDataStoreItem : IStoredCommand
+    internal class MergedDataStoreItem : IStoredItem
     {
-        private IStoredCommand[] _items;
+        private IStoredItem[] _items;
         private int _itemIndex;
-        private IStoredCommand _current;
+        private IStoredItem _current;
 
-        public MergedDataStoreItem( IStoredCommand[] items, int itemIndex )
+        public MergedDataStoreItem( IStoredItem[] items, int itemIndex )
         {
             _items = items;
             _itemIndex = itemIndex;
             _current = items[itemIndex];
         }
 
-        public IStoredCommand[] Items => _items;
+        public IStoredItem[] Items => _items;
 
         public int ItemIndex => _itemIndex;
 
