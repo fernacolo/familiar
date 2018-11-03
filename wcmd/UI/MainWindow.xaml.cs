@@ -360,17 +360,11 @@ namespace wcmd.UI
             var now = DateTime.Now;
 
             var adjustedText = AdjustForAccentSymbols( text );
+            adjustedText = AdjustForSpecialCharacters( adjustedText );
 
-            if ( !adjustedText.Contains( "~" ) )
-            {
-                SendKeys.SendWait( adjustedText + "\r" );
-                Activate();
-                document.Blocks.Clear();
-            }
-            else
-                MessageBox.Show(
-                    "Your command contains '~'. This familiar don't support that because there is a bug in .NET: https://referencesource.microsoft.com/#system.windows.forms/winforms/Managed/System/WinForms/SendKeys.cs,547."
-                );
+            SendKeys.SendWait( adjustedText + "\r" );
+            Activate();
+            document.Blocks.Clear();
 
             string stateTag = null;
             _dataStore.Write( now, text, ref stateTag );
@@ -426,6 +420,61 @@ namespace wcmd.UI
                 case '\'': // Used for á, é, í, ó, ú, ç.
                 case '"': // Used for ä, ë, ï, ö, ü.
                 case '^': // Used for â, ê, î, ô, û. 
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private string AdjustForSpecialCharacters( string text )
+        {
+            for ( var i = 0; i < text.Length; ++i )
+            {
+                if ( !IsSpecialChar( text[i] ) )
+                    continue;
+
+                var result = new StringBuilder( text.Length + 32, int.MaxValue );
+                result.Append( text.Substring( 0, i ) );
+
+                for ( ; i < text.Length; ++i )
+                {
+                    var ch = text[i];
+                    if ( IsSpecialChar( ch ) )
+                        result.Append( '{' ).Append( ch ).Append( '}' );
+                    else
+                        result.Append( ch );
+                }
+
+                text = result.ToString();
+                _trace.TraceInformation( "Text contains special chars; was adjusted to \"{0}\".", text );
+                return text;
+            }
+
+            _trace.TraceInformation( "Text has no special char." );
+            return text;
+        }
+
+        private static bool IsSpecialChar( char ch )
+        {
+            // Taken from https://docs.microsoft.com/en-us/dotnet/api/system.windows.forms.sendkeys?redirectedfrom=MSDN&view=netframework-4.7.2:
+            // The plus sign (+), caret (^), percent sign (%), tilde (~), and parentheses () have special meanings to SendKeys.
+            // To specify one of these characters, enclose it within braces ({}). For example, to specify the plus sign, use "{+}".
+            // To specify brace characters, use "{{}" and "{}}". Brackets ([ ]) have no special meaning to SendKeys, but you must enclose them in braces.
+            // In other applications, brackets do have a special meaning that might be significant when dynamic data exchange (DDE) occurs.
+
+            switch ( ch )
+            {
+                case '+':
+                case '^':
+                case '%':
+                case '~':
+                case '(':
+                case ')':
+                case '[':
+                case ']':
+                case '{':
+                case '}':
                     return true;
 
                 default:
