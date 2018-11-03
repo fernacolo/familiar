@@ -186,7 +186,7 @@ namespace wcmd
             }
         }
 
-        private void CompleteSearch( bool changed, Matcher matcher, List<Command> foundItems, Action notifyAction )
+        private void CompleteSearch( bool changed, Matcher matcher, IReadOnlyCollection<Command> foundItems, Action notifyAction )
         {
             if ( changed )
             {
@@ -195,12 +195,23 @@ namespace wcmd
                 foreach ( var command in foundItems )
                     items.Add( command.Stored );
 
+                items.Sort( MostRecentFirst );
+
                 var findings = new Findings( matcher, items );
                 Interlocked.Exchange( ref _findings, findings );
                 notifyAction?.Invoke();
             }
 
             Submit( new Request {Type = RequestType.ResumeSearch} );
+        }
+
+        private static int MostRecentFirst( IStoredItem x, IStoredItem y )
+        {
+            if ( x.WhenExecuted < y.WhenExecuted )
+                return -1;
+            if ( x.WhenExecuted > y.WhenExecuted )
+                return 1;
+            return string.Compare( x.Command, y.Command, StringComparison.Ordinal );
         }
 
         private enum RequestType

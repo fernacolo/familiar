@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq.Expressions;
 using System.Text;
 using System.Threading;
 using System.Windows;
@@ -31,7 +32,7 @@ namespace wcmd.UI
         private readonly Thread _consoleWindowObserver;
 
         private IDataStore _dataStore;
-        private IStoredItem _storedItem;
+        private IStoredItem _position;
         private Searcher _searcher;
         private InboundReplication _inboundMonitor;
         private ReplicationJob _outboundMonitor;
@@ -90,7 +91,7 @@ namespace wcmd.UI
             var localStore = new FileStore( config );
 
             _dataStore = new CachedDataStore( localStore );
-            _storedItem = _dataStore.Eof;
+            _position = _dataStore.Eof;
 
             // The localStore must be the last.
             var searchStore = new CachedDataStore( new MergedDataStore( new[] {inboundStore, localStore} ) );
@@ -293,20 +294,29 @@ namespace wcmd.UI
 
         private void RtCommand_PreviewKeyDown( object sender, KeyEventArgs e )
         {
-            if ( e.Key == Key.Up && _storedItem != _dataStore.Bof )
+            if ( e.Key == Key.Up && _position != _dataStore.Bof )
             {
-                var previous = _dataStore.GetPrevious( _storedItem );
+                var previous = _dataStore.GetPrevious( _position );
                 SetCommand( previous );
-                _storedItem = previous;
+                _position = previous;
                 e.Handled = true;
+                return;
             }
 
-            if ( e.Key == Key.Down && _storedItem != _dataStore.Eof )
+            if ( e.Key == Key.Down && _position != _dataStore.Eof )
             {
-                var next = _dataStore.GetNext( _storedItem );
+                var next = _dataStore.GetNext( _position );
                 SetCommand( next );
-                _storedItem = next;
+                _position = next;
                 e.Handled = true;
+                return;
+            }
+
+            if ( e.Key == Key.Escape )
+            {
+                RtCommand.Document.Blocks.Clear();
+                e.Handled = true;
+                return;
             }
         }
 
@@ -324,7 +334,7 @@ namespace wcmd.UI
             if ( selectedCommand != null )
             {
                 SetCommand( dialog.SelectedItem );
-                _storedItem = _dataStore.Eof;
+                _position = _dataStore.Eof;
             }
         }
 
@@ -363,7 +373,8 @@ namespace wcmd.UI
                 );
 
             string stateTag = null;
-            _storedItem = _dataStore.Write( now, text, ref stateTag );
+            _dataStore.Write( now, text, ref stateTag );
+            _position = _dataStore.Eof;
         }
 
         private string AdjustForAccentSymbols( string text )

@@ -246,7 +246,7 @@ namespace wcmd.DataFiles
 
             public string StateTag => _inner.StateTag;
 
-            public DateTime WhenExecuted => throw new NotImplementedException();
+            public DateTime WhenExecuted => _inner.WhenExecuted;
 
             public string Command { get; }
         }

@@ -200,5 +200,10 @@ namespace wcmd.Native
 
         [DllImport( "user32", SetLastError = true )]
         public static extern IntPtr SetParent( IntPtr hWnd, IntPtr hWndParent );
+
+        public delegate bool EnumThreadDelegate( IntPtr hWnd, IntPtr lParam );
+
+        [DllImport( "user32.dll", SetLastError = true )]
+        public static extern bool EnumThreadWindows( int dwThreadId, EnumThreadDelegate lpfn, IntPtr lParam );
     }
 }
