@@ -26,6 +26,13 @@ namespace wcmd
             for ( var i = 0; i < args.Length; ++i )
                 _trace.TraceInformation( "args[{0}]: {1}", i, args[i] );
 
+            if ( args.Length > 1 && args[1] == "--select" )
+            {
+                var attachSelector = new AttachSelector();
+                attachSelector.Show();
+                return;
+            }
+
             //var logFileName = Path.Combine( config.LocalDbDirectory.FullName, $"log-{DateTime.Now:yyyy-MM-dd,HHmm}.txt" );
             //_trace.TraceInformation( "Log file: {0}", logFileName );
             //var stream = new FileStream( logFileName, FileMode.Append, FileAccess.Write, FileShare.Read | FileShare.Delete, 1, false );

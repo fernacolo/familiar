@@ -201,6 +201,9 @@ namespace wcmd.Native
         [DllImport( "user32", SetLastError = true )]
         public static extern IntPtr SetParent( IntPtr hWnd, IntPtr hWndParent );
 
+        [DllImport( "user32.dll", SetLastError = true )]
+        public static extern bool PrintWindow( IntPtr hWnd, IntPtr hdcBlt, int nFlags );
+
         public delegate bool EnumThreadDelegate( IntPtr hWnd, IntPtr lParam );
 
         [DllImport( "user32.dll", SetLastError = true )]
