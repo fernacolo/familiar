@@ -5,8 +5,31 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:wcmd.UI"
         mc:Ignorable="d"
-        Title="AttachSelector" Height="450" Width="800" Loaded="Window_Loaded">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel x:Name="SpMain" />
-    </ScrollViewer>
+        Title="Select Application" Height="450" Width="800" Loaded="Window_Loaded">
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Top">
+            <Label DockPanel.Dock="Left">Look for:</Label>
+            <TextBox x:Name="TbSearch" TextWrapping="Wrap" Text="" Height="18" />
+        </DockPanel>
+        <DockPanel DockPanel.Dock="Bottom">
+            <Button Content="OK" Width="100" Margin="10,10,10,10" DockPanel.Dock="Right" Click="Button_Click"/>
+            <UIElement></UIElement>
+        </DockPanel>
+        <ListBox x:Name="LbProcesses" ItemsSource="{Binding ProcessItems}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel IsItemsHost="True" />
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="local:ProcessItem">
+                    <StackPanel Width="250">
+                        <Label Content="{Binding ProcessName}" />
+                        <Image Source="{Binding ImageSource}" Height="200"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
 </Window>

@@ -28,6 +28,7 @@ namespace wcmd.UI
     {
         private readonly TraceSource _trace;
         private readonly Process _parentProcess;
+        private readonly IntPtr _targetWindow;
         private readonly Thread _parentProcessObserver;
         private readonly Thread _consoleWindowObserver;
 
@@ -37,7 +38,7 @@ namespace wcmd.UI
         private InboundReplication _inboundMonitor;
         private ReplicationJob _outboundMonitor;
 
-        public MainWindow( int parentPid )
+        public MainWindow( int parentPid, IntPtr targetWindow )
         {
             // Safe initializations. Do not put anything here that can throw an exception.
             // Defer to loaded.
@@ -68,6 +69,8 @@ namespace wcmd.UI
             _parentProcess = Process.GetProcessById( parentPid );
             _parentProcessObserver = new Thread( ParentProcessObserver );
             _parentProcessObserver.IsBackground = true;
+
+            _targetWindow = targetWindow;
 
             _consoleWindowObserver = new Thread( ConsoleWindowObserver );
             // Set priority a bit higher than normal so this thread get cycles when our app is not active.
@@ -191,15 +194,8 @@ namespace wcmd.UI
                         {
                             var changeTime = DateTimeOffset.UtcNow.Ticks;
 
-                            var hwndConsole = Kernel32.GetConsoleWindow();
-                            if ( hwndConsole == IntPtr.Zero )
-                            {
-                                _trace.TraceError( "Unable to get console window." );
-                                return;
-                            }
-
                             // If the console is iconic, iconize ourselves.
-                            if ( User32.IsIconic( hwndConsole ) )
+                            if ( User32.IsIconic( _targetWindow ) )
                             {
                                 WindowState = WindowState.Minimized;
                                 Interlocked.Exchange( ref lastChange, changeTime );
@@ -213,7 +209,7 @@ namespace wcmd.UI
                                 Interlocked.Exchange( ref lastChange, changeTime );
                             }
 
-                            if ( !User32.GetWindowRect( hwndConsole, out var rect ) )
+                            if ( !User32.GetWindowRect( _targetWindow, out var rect ) )
                             {
                                 _trace.TraceError( "Unable to determine console window pos." );
                                 return;
@@ -254,7 +250,7 @@ namespace wcmd.UI
                             }
 
                             var hwndTop = User32.GetForegroundWindow();
-                            if ( hwndTop != hwndConsole )
+                            if ( hwndTop != _targetWindow )
                             {
                                 // The console is not the foreground window. We need to activate ourselves when the console becomes the foreground window.
                                 activateWithConsole = true;
@@ -356,12 +352,12 @@ namespace wcmd.UI
             var text = textRange.Text;
             text = text.TrimEnd( '\r', '\n', ' ', '\t' );
             _trace.TraceInformation( "Writing \"{0}\"...", text );
-            User32.SetForegroundWindow( Kernel32.GetConsoleWindow() );
-            var now = DateTime.Now;
 
             var adjustedText = AdjustForAccentSymbols( text );
             adjustedText = AdjustForSpecialCharacters( adjustedText );
 
+            var now = DateTime.Now;
+            User32.SetForegroundWindow( _targetWindow );
             SendKeys.SendWait( adjustedText + "\r" );
             Activate();
             document.Blocks.Clear();
@@ -458,6 +454,7 @@ namespace wcmd.UI
         private static bool IsSpecialChar( char ch )
         {
             // Taken from https://docs.microsoft.com/en-us/dotnet/api/system.windows.forms.sendkeys?redirectedfrom=MSDN&view=netframework-4.7.2:
+            //
             // The plus sign (+), caret (^), percent sign (%), tilde (~), and parentheses () have special meanings to SendKeys.
             // To specify one of these characters, enclose it within braces ({}). For example, to specify the plus sign, use "{+}".
             // To specify brace characters, use "{{}" and "{}}". Brackets ([ ]) have no special meaning to SendKeys, but you must enclose them in braces.
@@ -507,5 +504,6 @@ namespace wcmd.UI
     {
         public static readonly int ConsoleNotDetected = 1;
         public static readonly int PreviousInstanceDetected = 2;
+        public static readonly int UserCanceledAttach = 3;
     }
 }

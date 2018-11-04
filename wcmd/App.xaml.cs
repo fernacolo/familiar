@@ -26,30 +26,43 @@ namespace wcmd
             for ( var i = 0; i < args.Length; ++i )
                 _trace.TraceInformation( "args[{0}]: {1}", i, args[i] );
 
+            int parentPid;
+            var targetWindow = IntPtr.Zero;
+
             if ( args.Length > 1 && args[1] == "--select" )
             {
                 var attachSelector = new AttachSelector();
-                attachSelector.Show();
-                return;
+                attachSelector.ShowDialog();
+
+                parentPid = attachSelector.ParentPid;
+                targetWindow = attachSelector.TargetWindow;
+
+                if ( parentPid == 0 )
+                {
+                    Current.Shutdown( ExitCodes.UserCanceledAttach );
+                    return;
+                }
             }
-
-            //var logFileName = Path.Combine( config.LocalDbDirectory.FullName, $"log-{DateTime.Now:yyyy-MM-dd,HHmm}.txt" );
-            //_trace.TraceInformation( "Log file: {0}", logFileName );
-            //var stream = new FileStream( logFileName, FileMode.Append, FileAccess.Write, FileShare.Read | FileShare.Delete, 1, false );
-            //LogViewTraceListener.Actual = new TextWriterTraceListener( stream );
-
-            var parentPid = GetParentProcessId( Process.GetCurrentProcess() );
-
-            var attached = Kernel32.AttachConsole( (uint) parentPid );
-            _trace.TraceInformation( "{0} returned {1}", nameof( Kernel32.AttachConsole ), attached );
-
-            var hwndConsole = Kernel32.GetConsoleWindow();
-            if ( hwndConsole == IntPtr.Zero )
+            else
             {
-                _trace.TraceWarning( "No console window detected." );
-                MessageBox.Show( "Console not detected.\r\nPlease, start the familiar from Command Prompt.", "Familiar Notification", MessageBoxButton.OK, MessageBoxImage.Information );
-                Current.Shutdown( ExitCodes.ConsoleNotDetected );
-                return;
+                //var logFileName = Path.Combine( config.LocalDbDirectory.FullName, $"log-{DateTime.Now:yyyy-MM-dd,HHmm}.txt" );
+                //_trace.TraceInformation( "Log file: {0}", logFileName );
+                //var stream = new FileStream( logFileName, FileMode.Append, FileAccess.Write, FileShare.Read | FileShare.Delete, 1, false );
+                //LogViewTraceListener.Actual = new TextWriterTraceListener( stream );
+
+                parentPid = GetParentProcessId( Process.GetCurrentProcess() );
+
+                var attached = Kernel32.AttachConsole( (uint) parentPid );
+                _trace.TraceInformation( "{0} returned {1}", nameof( Kernel32.AttachConsole ), attached );
+
+                targetWindow = Kernel32.GetConsoleWindow();
+                if ( targetWindow == IntPtr.Zero )
+                {
+                    _trace.TraceWarning( "No console window detected." );
+                    MessageBox.Show( "Console not detected.\r\nPlease, start the familiar from Command Prompt.", "Familiar Notification", MessageBoxButton.OK, MessageBoxImage.Information );
+                    Current.Shutdown( ExitCodes.ConsoleNotDetected );
+                    return;
+                }
             }
 
             var mutexName = $"fam-{parentPid}";
@@ -98,7 +111,7 @@ namespace wcmd
             }
 
             Current.ShutdownMode = ShutdownMode.OnMainWindowClose;
-            var mainWindow = new MainWindow( parentPid );
+            var mainWindow = new MainWindow( parentPid, targetWindow );
             //Current.MainWindow = mainWindow;
             _trace.TraceInformation( "Showing main window." );
             mainWindow.Show();

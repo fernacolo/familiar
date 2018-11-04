@@ -16,7 +16,7 @@
     </Window.InputBindings>
     <DockPanel>
         <DockPanel DockPanel.Dock="Top">
-            <Label DockPanel.Dock="Left">Type anything:</Label>
+            <Label DockPanel.Dock="Left">Look for:</Label>
             <TextBox x:Name="TbSearch" TextWrapping="Wrap" Text="" TextChanged="TbSearch_TextChanged" Height="18"
                      PreviewKeyDown="TbSearch_PreviewKeyDown" />
         </DockPanel>
