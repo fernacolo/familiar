@@ -208,9 +208,9 @@ namespace wcmd
         private static int MostRecentFirst( IStoredItem x, IStoredItem y )
         {
             if ( x.WhenExecuted < y.WhenExecuted )
-                return -1;
-            if ( x.WhenExecuted > y.WhenExecuted )
                 return 1;
+            if ( x.WhenExecuted > y.WhenExecuted )
+                return -1;
             return string.Compare( x.Command, y.Command, StringComparison.Ordinal );
         }
 
