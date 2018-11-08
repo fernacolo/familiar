@@ -67,11 +67,14 @@
     <Compile Include="DataFiles\MergedDataStore.cs" />
     <Compile Include="Diagnostics\DiagnosticsCenter.cs" />
     <Compile Include="Native\Ntdll.cs" />
+    <Compile Include="Native\POINT.cs" />
+    <Compile Include="Native\ShowWindowValue.cs" />
     <Compile Include="Native\VirtualKeyCode.cs" />
     <Compile Include="Native\COORD.cs" />
     <Compile Include="Native\INPUT_RECORD.cs" />
     <Compile Include="Native\RECT.cs" />
     <Compile Include="Native\SECURITY_ATTRIBUTES.cs" />
+    <Compile Include="Native\WINDOWPLACEMENT.cs" />
     <Compile Include="Search\Command.cs" />
     <Compile Include="Search\Findings.cs" />
     <Compile Include="Search\Matcher.cs" />

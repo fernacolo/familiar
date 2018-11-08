@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Forms;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using wcmd.DataFiles;
 using wcmd.Diagnostics;
@@ -156,10 +157,10 @@ namespace wcmd.UI
                 var lastChange = DateTimeOffset.UtcNow.Ticks;
 
                 // If there is no change in this time, we consider idle. Use large value to avoid burning user's CPU and battery.
-                var idleTime = TimeSpan.FromSeconds( 1 );
+                var idleTime = TimeSpan.FromMilliseconds( 400 );
 
                 // If there is no change in this time, we consider "possibly idle". Use smaller than idle time to be responsive.
-                var possiblyIdleTime = TimeSpan.FromMilliseconds( 250 );
+                var possiblyIdleTime = TimeSpan.FromMilliseconds( 100 );
 
                 // A flag that tells we need to activate ourselves when the console gets activated.
                 var activateWithConsole = false;
@@ -202,17 +203,41 @@ namespace wcmd.UI
                                 return;
                             }
 
+                            if ( !User32.GetWindowRect( _targetWindow, out var rect ) )
+                            {
+                                _trace.TraceError( "Unable to determine window position." );
+                                return;
+                            }
+
+                            var windowPlacement = new WINDOWPLACEMENT();
+                            if ( !User32.GetWindowPlacement( _targetWindow, ref windowPlacement ) )
+                            {
+                                _trace.TraceError( "Unable to determine window placement. Smart-maximization is not supported." );
+                            }
+                            else
+                            {
+                                if ( windowPlacement.showCmd == ShowWindowValue.SW_MAXIMIZE )
+                                {
+                                    _trace.TraceInformation( "Maximization detected; will try to smart-maximize." );
+                                    User32.ShowWindow( _targetWindow, ShowWindowValue.SW_RESTORE );
+                                    if ( !WaitForRestore( _targetWindow, TimeSpan.FromMilliseconds( 500 ) ) )
+                                    {
+                                        _trace.TraceError( "Unable to restore target window; smart-maximize failed." );
+                                        return;
+                                    }
+
+                                    User32.GetWindowRect( new WindowInteropHelper( this ).Handle, out var ourRect );
+                                    User32.MoveWindow( _targetWindow, rect.X, rect.Y, rect.Width, rect.Height - ourRect.Height, true );
+                                    Interlocked.Exchange( ref lastChange, changeTime );
+                                    return;
+                                }
+                            }
+
                             // Otherwise get out of iconic state.
                             if ( WindowState != WindowState.Normal )
                             {
                                 WindowState = WindowState.Normal;
                                 Interlocked.Exchange( ref lastChange, changeTime );
-                            }
-
-                            if ( !User32.GetWindowRect( _targetWindow, out var rect ) )
-                            {
-                                _trace.TraceError( "Unable to determine console window pos." );
-                                return;
                             }
 
                             var topLeft = new Point( rect.Left, rect.Top );
@@ -243,11 +268,7 @@ namespace wcmd.UI
 
                             // If we are active, we know that the console is not. This is a final state.
                             if ( IsActive )
-                            {
-                                // Just make sure the console is visible.
-                                //User32.SetWindowPos( hwndConsole, new IntPtr(-2), 0, 0, 0, 0, User32.SetWindowPosFlags.SWP_NOACTIVATE );
                                 return;
-                            }
 
                             var hwndTop = User32.GetForegroundWindow();
                             if ( hwndTop != _targetWindow )
@@ -274,7 +295,28 @@ namespace wcmd.UI
             }
             catch ( Exception ex )
             {
-                _trace.TraceError( ex.ToString() );
+                _trace.TraceError( "{0}", ex.ToString() );
+            }
+        }
+
+        private static bool WaitForRestore( IntPtr hWnd, TimeSpan wait )
+        {
+            var windowPlacement = new WINDOWPLACEMENT();
+            var sw = (Stopwatch) null;
+            for ( ;; )
+            {
+                if ( User32.GetWindowPlacement( hWnd, ref windowPlacement ) && windowPlacement.showCmd == ShowWindowValue.SW_NORMAL )
+                    return true;
+
+                if ( wait < TimeSpan.Zero )
+                    return false;
+
+                if ( sw == null )
+                    sw = Stopwatch.StartNew();
+                else if ( sw.Elapsed > wait )
+                    return false;
+
+                Thread.Sleep( 100 );
             }
         }
 
@@ -363,6 +405,7 @@ namespace wcmd.UI
             document.Blocks.Clear();
 
             string stateTag = null;
+            // TODO: Fix a rare bug where this throws exception because the file is in use.
             _dataStore.Write( now, text, ref stateTag );
             _position = _dataStore.Eof;
         }
