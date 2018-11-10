@@ -33,7 +33,7 @@ namespace wcmd.DataFiles
         /// If <see cref="stateTag"/> is not null, then the write is only attempted when <see cref="StateTag"/> matches the specified value (conditional operation).
         /// If the condition is not met, this method returns null.
         /// </remarks>
-        IStoredItem Write( DateTime whenExecuted, string command, ref string stateTag );
+        IStoredItem Write( ref string stateTag, ItemPayload payload );
 
         /// <summary>
         /// Returns the command that appears before the specified one, or null if the specified one is the first.
@@ -64,6 +64,10 @@ namespace wcmd.DataFiles
         /// </summary>
         string StateTag { get; }
 
+        int SizeInStore { get; }
+
+        ItemPayload Payload { get; }
+
         /// <summary>
         /// When the command was executed.
         /// </summary>
@@ -73,5 +77,28 @@ namespace wcmd.DataFiles
         /// The exact command that was executed.
         /// </summary>
         string Command { get; }
+    }
+
+    public abstract class ItemPayload
+    {
+    }
+
+    public sealed class CommandPayload : ItemPayload
+    {
+        public string MachineName;
+        public int Pid;
+        public DateTime WhenExecuted;
+        public string Command;
+        public string Output;
+    }
+
+    public sealed class RawPayload : ItemPayload
+    {
+        public RawPayload( byte[] buffer )
+        {
+            Buffer = buffer ?? throw new ArgumentNullException( nameof( buffer ) );
+        }
+
+        public byte[] Buffer { get; }
     }
 }

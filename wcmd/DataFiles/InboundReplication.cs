@@ -112,13 +112,13 @@ namespace wcmd.DataFiles
             var source = new FileStore( sourceFile );
 
             var lastReadLink = state.LastReadLink;
-            var lastRead = lastReadLink == null ? source.Bof : source.ResolveLink( lastReadLink );
+            var lastReplicated = GetLastReplicatedItem( lastReadLink, source, ref target, out var isLinkValid );
             var changeDetected = false;
 
             for ( ;; )
             {
-                var newRecord = source.GetNext( lastRead );
-                if ( newRecord == source.Eof )
+                var newItem = source.GetNext( lastReplicated );
+                if ( newItem == source.Eof )
                     break;
 
                 if ( changeDetected == false )
@@ -128,24 +128,128 @@ namespace wcmd.DataFiles
                 }
 
                 string stateTag = null;
-                if ( target == null )
-                {
-                    var targetFile = new FileInfo( Path.Combine( _destination.FullName, "inbound.dat" ) );
-                    _trace.TraceInformation( "Preparing file to update: {0}.", targetFile.FullName );
-                    target = new FileStore( targetFile );
-                }
+                ResolveTargetStoreIfNeeded( ref target );
 
-                target.Write( newRecord.WhenExecuted, newRecord.Command, ref stateTag );
-                lastRead = newRecord;
+                target.Write( ref stateTag, newItem.Payload );
+                lastReplicated = newItem;
             }
 
             if ( !changeDetected )
             {
                 _trace.TraceInformation( "No external change was detected." );
-                return;
+
+                if ( isLinkValid )
+                    return;
+
+                _trace.TraceInformation( "Attempting to fix last read link..." );
             }
 
-            state.LastReadLink = source.CreateLink( lastRead );
+            state.LastReadLink = source.CreateLink( lastReplicated );
+
+            if ( !isLinkValid )
+                source.ResolveLink( state.LastReadLink );
+        }
+
+        private IStoredItem GetLastReplicatedItem( byte[] lastReadLink, IDataStore source, ref IDataStore target, out bool isLinkValid )
+        {
+            isLinkValid = true;
+
+            if ( lastReadLink == null )
+                return source.Bof;
+
+            try
+            {
+                return source.ResolveLink( lastReadLink );
+            }
+            catch ( Exception ex )
+            {
+                _trace.TraceError( "Unable to resolve last read link: {0}", ex );
+            }
+
+            _trace.TraceInformation( "Trying to recover..." );
+            ResolveTargetStoreIfNeeded( ref target );
+
+            var recoveryLookupSize = 2 * 1024 * 1024;
+            var recoveryLookupTimeout = TimeSpan.FromSeconds( 1 );
+
+            var sourceItems = GetLastItems( source, recoveryLookupSize, recoveryLookupTimeout );
+            var targetItems = GetLastItems( target, recoveryLookupSize, recoveryLookupTimeout );
+
+            var result = GetLastItemFromLeftPresentOnRight( sourceItems, targetItems );
+
+            if ( result != null )
+                _trace.TraceInformation( "Recovery was successful!" );
+            else
+            {
+                _trace.TraceWarning( "Recovery failed. Data loss is possible." );
+                result = source.GetPrevious( source.Eof );
+            }
+
+            isLinkValid = false;
+            return result;
+        }
+
+        private static List<IStoredItem> GetLastItems( IDataStore store, int lookupSize, TimeSpan lookupTimeout )
+        {
+            var current = store.Eof;
+            var items = new List<IStoredItem>( 100 );
+
+            var sw = Stopwatch.StartNew();
+            do
+            {
+                current = store.GetPrevious( current );
+                if ( current == store.Bof )
+                    break;
+                items.Add( current );
+
+                lookupSize -= current.SizeInStore;
+            } while ( lookupSize > 0 && sw.Elapsed < lookupTimeout );
+
+            var result = new List<IStoredItem>( items.Count );
+            for ( var i = items.Count - 1; i >= 0; --i )
+                result.Add( items[i] );
+
+            return result;
+        }
+
+        private IStoredItem GetLastItemFromLeftPresentOnRight( List<IStoredItem> leftItems, List<IStoredItem> rightItems )
+        {
+            if ( rightItems.Count == 0 )
+                return null;
+
+            var leftIndex = leftItems.Count;
+            while ( --leftIndex >= 0 )
+            {
+                var leftItem = leftItems[leftIndex];
+                foreach ( var rightItem in rightItems )
+                    if ( Match( leftItem.Payload, rightItem.Payload ) )
+                        return leftItem;
+            }
+
+            return null;
+        }
+
+        private bool Match( ItemPayload a, ItemPayload b )
+        {
+            var aCmd = a as CommandPayload;
+            var bCmd = b as CommandPayload;
+            if ( aCmd == null || bCmd == null )
+                return false;
+
+            if ( aCmd.WhenExecuted == bCmd.WhenExecuted && aCmd.Command == bCmd.Command )
+                return true;
+
+            return false;
+        }
+
+        private void ResolveTargetStoreIfNeeded( ref IDataStore target )
+        {
+            if ( target != null )
+                return;
+
+            var targetFile = new FileInfo( Path.Combine( _destination.FullName, "inbound.dat" ) );
+            _trace.TraceInformation( "Preparing file to update: {0}.", targetFile.FullName );
+            target = new FileStore( targetFile );
         }
     }
 

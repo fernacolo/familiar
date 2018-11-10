@@ -29,7 +29,7 @@ namespace wcmd.DataFiles
 
         public IStoredItem Eof => _eof;
 
-        public IStoredItem Write( DateTime whenExecuted, string command, ref string stateTag )
+        public IStoredItem Write( ref string stateTag, ItemPayload payload )
         {
             if ( stateTag != null )
                 throw new NotImplementedException();
@@ -37,7 +37,7 @@ namespace wcmd.DataFiles
             if ( _last != null )
                 stateTag = _last.StateTag;
 
-            var inner = _inner.Write( whenExecuted, command, ref stateTag );
+            var inner = _inner.Write( ref stateTag, payload );
             if ( inner == null )
             {
                 // If the conditional write failed, some records might have appeared after what knew for last record.
@@ -46,7 +46,7 @@ namespace wcmd.DataFiles
 
                 // Write again, this time unconditionally.
                 stateTag = null;
-                inner = _inner.Write( whenExecuted, command, ref stateTag );
+                inner = _inner.Write( ref stateTag, payload );
             }
 
             Debug.Assert( inner != null );
@@ -239,16 +239,19 @@ namespace wcmd.DataFiles
             public CacheEntry( IStoredItem inner, CacheEntry previous, CacheEntry next )
             {
                 _inner = inner ?? throw new ArgumentNullException( nameof( inner ) );
-                Command = inner.Command;
                 _previous = previous;
                 _next = next;
             }
 
             public string StateTag => _inner.StateTag;
 
+            public int SizeInStore => _inner.SizeInStore;
+
+            public ItemPayload Payload => _inner.Payload;
+
             public DateTime WhenExecuted => _inner.WhenExecuted;
 
-            public string Command { get; }
+            public string Command => _inner.Command;
         }
     }
 }

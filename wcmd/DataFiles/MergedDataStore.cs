@@ -46,7 +46,7 @@ namespace wcmd.DataFiles
 
         public IStoredItem Eof { get; }
 
-        public IStoredItem Write( DateTime whenExecuted, string command, ref string stateTag )
+        public IStoredItem Write( ref string stateTag, ItemPayload payload )
         {
             // We always write to the last store.
             var storeToWrite = _innerStores[_innerStores.Length - 1];
@@ -63,7 +63,7 @@ namespace wcmd.DataFiles
 
             // TODO: There is a slight chance that StateTag changes between the last verification above and the execution.
 
-            var written = storeToWrite.Write( whenExecuted, command, ref storeToWriteState );
+            var written = storeToWrite.Write( ref storeToWriteState, payload );
             if ( written == null )
                 return null;
 
@@ -142,6 +142,10 @@ namespace wcmd.DataFiles
                 return sb.ToString();
             }
         }
+
+        public int SizeInStore => _current.SizeInStore;
+
+        public ItemPayload Payload => _current.Payload;
 
         public DateTime WhenExecuted => _current.WhenExecuted;
 

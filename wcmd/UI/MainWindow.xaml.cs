@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq.Expressions;
 using System.Text;
 using System.Threading;
 using System.Windows;
@@ -16,7 +15,6 @@ using wcmd.Native;
 using wcmd.Sessions;
 using Application = System.Windows.Application;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
-using MessageBox = System.Windows.MessageBox;
 
 // ReSharper disable IdentifierTypo
 
@@ -28,6 +26,8 @@ namespace wcmd.UI
     public partial class MainWindow
     {
         private readonly TraceSource _trace;
+        private readonly int _pid;
+        private readonly string _machineName;
         private readonly Process _parentProcess;
         private readonly IntPtr _targetWindow;
         private readonly Thread _parentProcessObserver;
@@ -45,6 +45,9 @@ namespace wcmd.UI
             // Defer to loaded.
 
             _trace = DiagnosticsCenter.GetTraceSource( nameof( MainWindow ) );
+
+            _pid = parentPid;
+            _machineName = Environment.MachineName;
 
             var inputLanguage = InputLanguage.CurrentInputLanguage;
             _trace.TraceInformation( "Input language {0}: {1}", nameof( inputLanguage.LayoutName ), inputLanguage.LayoutName );
@@ -91,10 +94,15 @@ namespace wcmd.UI
             // TODO: Should be provided by config.
             var inboundFile = new FileInfo( Path.Combine( config.LocalDbDirectory.FullName, "inbound.dat" ) );
 
-            var inboundStore = new FileStore( inboundFile );
-            var localStore = new FileStore( config );
+            IDataStore inboundStore = new FileStore( inboundFile );
+            inboundStore = new FilteredDataStore( inboundStore, IsCommand );
 
-            _dataStore = new CachedDataStore( localStore );
+            IDataStore localStore = new FileStore( config );
+            localStore = new FilteredDataStore( localStore, IsCommand );
+
+            var cachedStore = new CachedDataStore( localStore );
+
+            _dataStore = cachedStore;
             _position = _dataStore.Eof;
 
             // The localStore must be the last.
@@ -119,6 +127,11 @@ namespace wcmd.UI
             _consoleWindowObserver.Start();
 
             _trace.TraceInformation( "Initialization finished." );
+        }
+
+        private static bool IsCommand( ItemPayload arg )
+        {
+            return arg is CommandPayload;
         }
 
         private bool IsMyDataFile( string fileName )
@@ -209,6 +222,9 @@ namespace wcmd.UI
                                 return;
                             }
 
+                            var interopHelper = new WindowInteropHelper( this );
+                            User32.GetWindowRect( interopHelper.Handle, out var ourRect );
+
                             var windowPlacement = new WINDOWPLACEMENT();
                             if ( !User32.GetWindowPlacement( _targetWindow, ref windowPlacement ) )
                             {
@@ -226,7 +242,6 @@ namespace wcmd.UI
                                         return;
                                     }
 
-                                    User32.GetWindowRect( new WindowInteropHelper( this ).Handle, out var ourRect );
                                     User32.MoveWindow( _targetWindow, rect.X, rect.Y, rect.Width, rect.Height - ourRect.Height, true );
                                     Interlocked.Exchange( ref lastChange, changeTime );
                                     return;
@@ -240,35 +255,21 @@ namespace wcmd.UI
                                 Interlocked.Exchange( ref lastChange, changeTime );
                             }
 
-                            var topLeft = new Point( rect.Left, rect.Top );
-                            var size = new Point( rect.Right - rect.Left + 1, rect.Bottom - rect.Top + 1 );
-
-                            //_trace.TraceInformation( "Console Position: ({0},{1}) Size: {2}x{3}", topLeft.X, topLeft.Y, size.X, size.Y );
-
-                            var compositionTarget = PresentationSource.FromVisual( this )?.CompositionTarget;
-                            if ( compositionTarget != null )
+                            var newTop = rect.Bottom + 1;
+                            if ( ourRect.Left != rect.Left || ourRect.Top != newTop || ourRect.Right != rect.Right )
                             {
-                                // Transform device coords to window coords.
-                                topLeft = compositionTarget.TransformFromDevice.Transform( topLeft );
-                                size = compositionTarget.TransformFromDevice.Transform( size );
-                                //_trace.TraceInformation( "After transform, console Position: ({0},{1}) Size: {2}x{3}", topLeft.X, topLeft.Y, size.X, size.Y );
-                            }
-
-                            var newLeft = topLeft.X;
-                            var newTop = topLeft.Y + size.Y;
-                            var newWidth = size.X;
-
-                            if ( Left != newLeft || Top != newTop || Width != newWidth )
-                            {
-                                Left = newLeft;
-                                Top = newTop;
-                                Width = newWidth;
+                                // Using Win32 to move because it works regardless of DPI settings.
+                                User32.MoveWindow( interopHelper.Handle, rect.X, newTop, rect.Width, ourRect.Height, true );
                                 Interlocked.Exchange( ref lastChange, changeTime );
                             }
 
                             // If we are active, we know that the console is not. This is a final state.
                             if ( IsActive )
+                            {
+                                // Allow the user to activate the console without circling back.
+                                activateWithConsole = false;
                                 return;
+                            }
 
                             var hwndTop = User32.GetForegroundWindow();
                             if ( hwndTop != _targetWindow )
@@ -405,9 +406,21 @@ namespace wcmd.UI
             document.Blocks.Clear();
 
             string stateTag = null;
+            var payload = CreatePayload( now, text );
             // TODO: Fix a rare bug where this throws exception because the file is in use.
-            _dataStore.Write( now, text, ref stateTag );
+            _dataStore.Write( ref stateTag, payload );
             _position = _dataStore.Eof;
+        }
+
+        private ItemPayload CreatePayload( DateTime whenExecuted, string command )
+        {
+            return new CommandPayload
+            {
+                MachineName = _machineName,
+                Pid = _pid,
+                WhenExecuted = whenExecuted,
+                Command = command,
+            };
         }
 
         private string AdjustForAccentSymbols( string text )

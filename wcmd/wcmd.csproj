@@ -59,6 +59,7 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="DataFiles\FilteredDataStore.cs" />
     <Compile Include="DataFiles\CachedDataStore.cs" />
     <Compile Include="DataFiles\DataCorruptionException.cs" />
     <Compile Include="DataFiles\DataFileRecord.cs" />

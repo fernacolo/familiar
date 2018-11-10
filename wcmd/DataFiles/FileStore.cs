@@ -70,30 +70,25 @@ namespace wcmd.DataFiles
             }
         }
 
-        private readonly IStoredItem _bof = new FileStoreItem( null, -1L, DateTime.MinValue, null );
-        private readonly IStoredItem _eof = new FileStoreItem( null, long.MaxValue, DateTime.MaxValue, null );
+        private readonly IStoredItem _bof = new FileStoreItem( null, -1L, null, 0 );
+        private readonly IStoredItem _eof = new FileStoreItem( null, long.MaxValue, null, 0 );
 
         public IStoredItem Bof => _bof;
 
         public IStoredItem Eof => _eof;
 
-        public IStoredItem Write( DateTime whenExecuted, string command, ref string stateTag )
+        public IStoredItem Write( ref string stateTag, ItemPayload payload )
         {
-            var record = new DataFileRecord
-            {
-                Type = DataFileRecord.CommandV1,
-                WhenExecuted = whenExecuted,
-                Command = command
-            };
-
-            var position = WriteRecord( record, ref stateTag );
+            var record = ToRecord( payload );
+            var binarySize = 0;
+            var position = WriteRecord( record, ref stateTag, ref binarySize );
             if ( position == -1L )
                 return null;
 
-            return new FileStoreItem( stateTag, position, whenExecuted, command );
+            return new FileStoreItem( stateTag, position, payload, binarySize );
         }
 
-        private long WriteRecord( DataFileRecord record, ref string stateTag )
+        private long WriteRecord( DataFileRecord record, ref string stateTag, ref int binarySize )
         {
             var dataSize = record.DataSize;
             if ( dataSize < 1 || dataSize > ushort.MaxValue )
@@ -120,6 +115,8 @@ namespace wcmd.DataFiles
 
                 WriteZeros( writer, Align( writtenSize ) - writtenSize );
                 WriteCloseMark( writer, size );
+
+                binarySize = (int) (stream.Position - position);
             }
 
             // MINOR: Slight change of concurrent modification between file closure and this read.
@@ -153,9 +150,9 @@ namespace wcmd.DataFiles
                 {
                     if ( position == 0L )
                         return _bof;
-                    var record = ReadPreviousRecord( reader, ref position );
-                    if ( record.Type == DataFileRecord.CommandV1 )
-                        return new FileStoreItem( StateTag, position, record.WhenExecuted, record.Command );
+                    var binarySize = 0;
+                    var record = ReadPreviousRecord( reader, ref position, ref binarySize );
+                    return new FileStoreItem( StateTag, position, ToPayload( record ), binarySize );
                 }
             }
         }
@@ -172,23 +169,24 @@ namespace wcmd.DataFiles
             using ( var reader = GetReader() )
             {
                 long position;
+                var binarySize = 0;
+
                 if ( bm == _bof )
                     position = 0L;
                 else
                 {
                     // Skip the specified record.
                     position = bm.Position;
-                    ReadNextRecord( reader, ref position );
+                    ReadNextRecord( reader, ref position, ref binarySize );
                 }
 
                 for ( ;; )
                 {
                     var lastPosition = position;
-                    var record = ReadNextRecord( reader, ref position );
+                    var record = ReadNextRecord( reader, ref position, ref binarySize );
                     if ( record == null )
                         return _eof;
-                    if ( record.Type == DataFileRecord.CommandV1 )
-                        return new FileStoreItem( StateTag, lastPosition, record.WhenExecuted, record.Command );
+                    return new FileStoreItem( StateTag, lastPosition, ToPayload( record ), binarySize );
                 }
             }
         }
@@ -200,20 +198,50 @@ namespace wcmd.DataFiles
             if ( item == _eof )
                 return new byte[] {2};
 
-            return ((FileStoreItem) item).CreateLink();
+            var fileItem = (FileStoreItem) item;
+
+            var stream = new MemoryStream();
+            var writer = new BinaryWriter( stream, Encoding.UTF8, true );
+            var stateTag = fileItem.StateTag;
+            var position = fileItem.Position;
+
+            writer.Write( stateTag != null );
+            if ( stateTag != null ) writer.Write( stateTag );
+            writer.Write( position );
+            return stream.ToArray();
         }
 
         public IStoredItem ResolveLink( byte[] link )
         {
             if ( link.Length != 1 )
-                return new FileStoreItem( link );
+            {
+                Stream stream = new MemoryStream( link );
+                var reader = new BinaryReader( stream, Encoding.UTF8, true );
+                var stateTag = reader.ReadBoolean() ? reader.ReadString() : null;
+                var position = reader.ReadInt64();
+                if ( position < 0 )
+                    throw new InvalidOperationException( "Link points to negative position" );
+
+                using ( reader = GetReader() )
+                {
+                    stream = reader.BaseStream;
+                    if ( position >= stream.Length )
+                        throw new InvalidOperationException( "Link points to after end of stream" );
+
+                    stream.Position = position;
+                    var binarySize = 0;
+                    var record = ReadRecord( reader, ref binarySize );
+                    _trace.TraceInformation( "A previous link was resolved into a record at offset {0}.", position );
+                    return new FileStoreItem( stateTag, position, ToPayload( record ), binarySize );
+                }
+            }
 
             switch ( link[0] )
             {
                 case 1: return _bof;
                 case 2: return _eof;
                 default:
-                    throw new ArgumentException( "Invalid value", nameof( link ) );
+                    throw new ArgumentException( "Invalid link value", nameof( link ) );
             }
         }
 
@@ -221,7 +249,7 @@ namespace wcmd.DataFiles
         /// Reads the record positioned before the specified position. Updates the specified position
         /// to contain the position of the record that was just read.
         /// </summary>
-        private DataFileRecord ReadPreviousRecord( BinaryReader reader, ref long pos )
+        private DataFileRecord ReadPreviousRecord( BinaryReader reader, ref long pos, ref int binarySize )
         {
             // Read the close mark to determine the record size.
             var stream = reader.BaseStream;
@@ -236,14 +264,14 @@ namespace wcmd.DataFiles
             stream.Position = pos;
 
             // Read the record.
-            return ReadRecord( reader );
+            return ReadRecord( reader, ref binarySize );
         }
 
         /// <summary>
         /// Reads the record positioned at the specified position. Updates the specified position to contain the position of the next record.
         /// Returns null if the specified position is after the end of stream.
         /// </summary>
-        private DataFileRecord ReadNextRecord( BinaryReader reader, ref long pos )
+        private DataFileRecord ReadNextRecord( BinaryReader reader, ref long pos, ref int binarySize )
         {
             AssertAligned( pos );
             var stream = reader.BaseStream;
@@ -259,7 +287,7 @@ namespace wcmd.DataFiles
 
                 try
                 {
-                    var record = ReadRecord( reader );
+                    var record = ReadRecord( reader, ref binarySize );
                     _trace.TraceInformation( "A record was read at offset {0}.", pos );
                     pos = Align( stream.Position );
                     return record;
@@ -319,8 +347,11 @@ namespace wcmd.DataFiles
             }
         }
 
-        private DataFileRecord ReadRecord( BinaryReader reader )
+        private DataFileRecord ReadRecord( BinaryReader reader, ref int binarySize )
         {
+            var stream = reader.BaseStream;
+            var offset = stream.Position;
+
             var size = ReadOpenMark( reader );
             size = Align( size );
 
@@ -336,11 +367,20 @@ namespace wcmd.DataFiles
             }
 
             ReadCloseMark( reader );
+            binarySize = (int) (stream.Position - offset);
 
-            var stream = new MemoryStream( buffer );
+            stream = new MemoryStream( buffer );
             var recordReader = new BinaryReader( stream, Encoding.UTF8 );
             var result = new DataFileRecord();
-            result.ReadFrom( recordReader );
+            try
+            {
+                result.ReadFrom( recordReader );
+            }
+            catch ( Exception ex )
+            {
+                _trace.TraceError( "Error reading record at {0}: {1}", offset, ex );
+                result.SetRawData( buffer );
+            }
 
             return result;
         }
@@ -502,67 +542,79 @@ namespace wcmd.DataFiles
             var reader = new BinaryReader( stream, Encoding.UTF8 );
             return reader;
         }
+
+        private static DataFileRecord ToRecord( ItemPayload payload )
+        {
+            if ( payload is CommandPayload commandPayload )
+            {
+                return new DataFileRecord
+                {
+                    Type = DataFileRecord.CommandV2,
+                    MachineName = commandPayload.MachineName,
+                    Pid = commandPayload.Pid,
+                    WhenExecuted = commandPayload.WhenExecuted,
+                    Command = commandPayload.Command,
+                    Output = commandPayload.Output
+                };
+            }
+
+            throw new InvalidOperationException( $"Unexpected payload type: {payload.GetType().FullName}" );
+        }
+
+        private static ItemPayload ToPayload( DataFileRecord record )
+        {
+            switch ( record.Type )
+            {
+                case DataFileRecord.CommandV1:
+                    return new CommandPayload
+                    {
+                        WhenExecuted = record.WhenExecuted,
+                        Command = record.Command
+                    };
+
+                case DataFileRecord.CommandV2:
+                    return new CommandPayload
+                    {
+                        MachineName = record.MachineName,
+                        Pid = record.Pid,
+                        WhenExecuted = record.WhenExecuted,
+                        Command = record.Command,
+                        Output = record.Output
+                    };
+
+
+                case DataFileRecord.Raw:
+                    return new RawPayload( record.Buffer );
+
+                default:
+                    throw new InvalidOperationException( $"Unexpected data file record type: 0x{record.Type:X2}" );
+            }
+        }
     }
 
     internal class FileStoreItem : IStoredItem
     {
-        public FileStoreItem( string stateTag, long position, DateTime whenExecuted, string command )
+        public FileStoreItem( string stateTag, long position, ItemPayload payload, int sizeInStore )
         {
             StateTag = stateTag;
             Position = position;
-            WhenExecuted = whenExecuted;
-            Command = command;
-        }
-
-        public FileStoreItem( byte[] data )
-        {
-            if ( data == null )
-                throw new ArgumentNullException( nameof( data ) );
-
-            var stream = new MemoryStream( data );
-            var reader = new BinaryReader( stream, Encoding.UTF8, true );
-            Position = reader.ReadInt64();
-            StateTag = reader.ReadBoolean() ? reader.ReadString() : null;
-            WhenExecuted = ReadDateTime( reader );
-            Command = reader.ReadBoolean() ? reader.ReadString() : null;
-        }
-
-        public byte[] CreateLink()
-        {
-            var stream = new MemoryStream();
-            var writer = new BinaryWriter( stream, Encoding.UTF8, true );
-            writer.Write( Position );
-
-            writer.Write( StateTag != null );
-            if ( StateTag != null ) writer.Write( StateTag );
-
-            WriteDateTime( writer, WhenExecuted );
-
-            writer.Write( Command != null );
-            if ( Command != null ) writer.Write( Command );
-
-            return stream.ToArray();
-        }
-
-        private static DateTime ReadDateTime( BinaryReader reader )
-        {
-            var kind = reader.ReadByte();
-            var ticks = reader.ReadInt64();
-            return new DateTime( ticks, (DateTimeKind) kind );
-        }
-
-        private static void WriteDateTime( BinaryWriter writer, DateTime value )
-        {
-            writer.Write( (byte) value.Kind );
-            writer.Write( value.Ticks );
+            Payload = payload;
+            SizeInStore = sizeInStore;
         }
 
         public string StateTag { get; }
 
-        public DateTime WhenExecuted { get; }
+        public int SizeInStore { get; }
 
-        public string Command { get; }
+        public ItemPayload Payload { get; }
 
+        public DateTime WhenExecuted => ((CommandPayload) Payload).WhenExecuted;
+
+        public string Command => ((CommandPayload) Payload).Command;
+
+        /// <summary>
+        /// Record position in the file. This is the absolute offset of the open mark.
+        /// </summary>
         public long Position { get; }
     }
 }
