@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
+
+// ReSharper disable InconsistentNaming
 
 namespace wcmd.Diagnostics
 {
@@ -73,14 +76,30 @@ namespace wcmd.Diagnostics
 
         public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string message )
         {
-            Actual.TraceEvent( eventCache, source, eventType, id, message );
-            Actual.Flush();
+            try
+            {
+                Actual.TraceEvent( eventCache, source, eventType, id, message );
+                Actual.Flush();
+            }
+            catch ( Exception ex )
+            {
+                Debug.WriteLine( ex );
+                throw;
+            }
         }
 
         public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string format, params object[] args )
         {
-            Actual.TraceEvent( eventCache, source, eventType, id, format, args );
-            Actual.Flush();
+            try
+            {
+                Actual.TraceEvent( eventCache, source, eventType, id, format, args );
+                Actual.Flush();
+            }
+            catch ( Exception ex )
+            {
+                Debug.WriteLine( ex );
+                throw;
+            }
         }
 
         public override void TraceTransfer( TraceEventCache eventCache, string source, int id, string message, Guid relatedActivityId )
@@ -104,6 +123,82 @@ namespace wcmd.Diagnostics
         public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string message )
         {
             Debug.WriteLine( "[{0}] {1}: {2}", source, eventType, message );
+        }
+
+        public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string format, params object[] args )
+        {
+            var message = format;
+            if ( args != null && args.Length > 0 )
+                message = string.Format( CultureInfo.InvariantCulture, format, args );
+            TraceEvent( eventCache, source, eventType, id, message );
+        }
+    }
+
+    internal class WindowsApplicationEventTraceListener : TraceListener
+    {
+        private readonly ConcurrentDictionary<string, EventLog> _cache = new ConcurrentDictionary<string, EventLog>();
+
+        public override void Write( string message )
+        {
+            throw new InvalidOperationException();
+        }
+
+        public override void WriteLine( string message )
+        {
+            throw new InvalidOperationException();
+        }
+
+        public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string message )
+        {
+            var eventLog = _cache.GetOrAdd( source, CreateEventLog );
+            eventLog.WriteEntry( message ?? "(no message)", ToEntryType( eventType ), id );
+        }
+
+        private static EventLog CreateEventLog( string source )
+        {
+            const string logName = "Familiar";
+
+            var sourceName = $"{logName}-{source}";
+            if ( EventLog.SourceExists( sourceName ) )
+            {
+                // Find the log associated with this source.    
+                var currentLogName = EventLog.LogNameFromSourceName( sourceName, "." );
+                // Make sure the source is in the log we believe it to be in.
+                if ( currentLogName != logName )
+                    EventLog.DeleteEventSource( sourceName );
+            }
+            else
+            {
+                EventLog.CreateEventSource( sourceName, logName );
+            }
+
+            var eventLog = new EventLog( logName, ".", sourceName );
+            return eventLog;
+        }
+
+        private static EventLogEntryType ToEntryType( TraceEventType eventType )
+        {
+            switch ( eventType )
+            {
+                case TraceEventType.Critical:
+                case TraceEventType.Error:
+                    return EventLogEntryType.Error;
+
+                case TraceEventType.Information:
+                case TraceEventType.Start:
+                case TraceEventType.Stop:
+                case TraceEventType.Suspend:
+                case TraceEventType.Resume:
+                case TraceEventType.Transfer:
+                case TraceEventType.Verbose:
+                    return EventLogEntryType.Information;
+
+                case TraceEventType.Warning:
+                    return EventLogEntryType.Warning;
+
+                default:
+                    throw new InvalidOperationException( $"Unexpected trace event type: {eventType}" );
+            }
         }
 
         public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string format, params object[] args )

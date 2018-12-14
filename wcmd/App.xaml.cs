@@ -20,6 +20,7 @@ namespace wcmd
 
         private void OnStartup( object sender, StartupEventArgs e )
         {
+            LogViewTraceListener.Actual = new WindowsApplicationEventTraceListener();
             _trace = DiagnosticsCenter.GetTraceSource( nameof( App ) );
 
             var args = Environment.GetCommandLineArgs();
