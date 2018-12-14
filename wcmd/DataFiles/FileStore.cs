@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using wcmd.Diagnostics;
@@ -17,7 +18,7 @@ namespace wcmd.DataFiles
         {
             if ( config == null )
                 throw new ArgumentNullException( nameof( config ) );
-            _trace = DiagnosticsCenter.GetTraceSource( $"{nameof( FileStore )} - {config.SessionId}" );
+            _trace = DiagnosticsCenter.GetTraceSource( nameof( FileStore ) + "-Session" );
             var dataFileName = Path.Combine( config.LocalDbDirectory.ToString(), $"{config.SessionId}.dat" );
             _fileInfo = new FileInfo( dataFileName );
         }
@@ -26,7 +27,7 @@ namespace wcmd.DataFiles
         {
             if ( fileInfo == null )
                 throw new ArgumentNullException( nameof( fileInfo ) );
-            _trace = DiagnosticsCenter.GetTraceSource( $"{nameof( FileStore )} - {fileInfo.FullName}" );
+            _trace = DiagnosticsCenter.GetTraceSource( nameof( FileStore ) + "-Other" );
             _fileInfo = fileInfo;
         }
 
@@ -148,10 +149,10 @@ namespace wcmd.DataFiles
                 var position = bm == _eof ? stream.Length : bm.Position;
                 for ( ;; )
                 {
-                    if ( position == 0L )
-                        return _bof;
                     var binarySize = 0;
                     var record = ReadPreviousRecord( reader, ref position, ref binarySize );
+                    if ( record == null )
+                        return _bof;
                     return new FileStoreItem( StateTag, position, ToPayload( record ), binarySize );
                 }
             }
@@ -251,20 +252,34 @@ namespace wcmd.DataFiles
         /// </summary>
         private DataFileRecord ReadPreviousRecord( BinaryReader reader, ref long pos, ref int binarySize )
         {
-            // Read the close mark to determine the record size.
             var stream = reader.BaseStream;
-            pos -= SizeOfCloseMark;
-            stream.Position = pos;
-            var size = ReadCloseMark( reader );
+            while ( pos > 0L )
+            {
+                var recoveryPos = pos;
+                try
+                {
+                    // Read the close mark to determine the record size.
+                    pos -= SizeOfCloseMark;
+                    stream.Position = pos;
+                    var size = ReadCloseMark( reader );
 
-            // Move to the open mark.
-            size = Align( size );
-            pos -= size;
-            pos -= SizeOfOpenMark;
-            stream.Position = pos;
+                    // Move to the open mark.
+                    size = Align( size );
+                    pos -= size;
+                    pos -= SizeOfOpenMark;
+                    stream.Position = pos;
 
-            // Read the record.
-            return ReadRecord( reader, ref binarySize );
+                    // Read the record.
+                    return ReadRecord( reader, ref binarySize );
+                }
+                catch ( DataCorruptionException ex )
+                {
+                    _trace.TraceWarning( "Trying to recover from data corruption.\r\n{0}", ex );
+                    pos = SearchPreviousCloseMark( stream, recoveryPos - 1L );
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -294,9 +309,63 @@ namespace wcmd.DataFiles
                 }
                 catch ( DataCorruptionException ex )
                 {
-                    _trace.TraceError( "{0}", ex );
+                    _trace.TraceWarning( "Trying to recover from data corruption.\r\n{0}", ex );
                     pos = SearchNextOpenMark( stream, pos );
                 }
+            }
+        }
+
+        private long SearchPreviousCloseMark( Stream stream, long pos )
+        {
+            const int bufferSize = 4096;
+            AssertAligned( bufferSize );
+
+            if ( pos < 0L )
+                return 0L;
+
+            pos = AlignBack( pos );
+
+            var buffer = new byte[bufferSize];
+
+            // Read chunks of data searching for the close mark.
+            for ( ;; )
+            {
+                var chunkLen = buffer.Length;
+                if ( pos < chunkLen )
+                    chunkLen = (int) pos;
+
+                var chunkPos = pos - chunkLen;
+
+                // There must be space for at least an empty record.
+                if ( chunkPos < SizeOfOpenMark + SizeOfCloseMark )
+                    return 0L;
+
+                AssertAligned( chunkPos );
+
+                stream.Position = chunkPos;
+                var len = stream.Read( buffer, 0, chunkLen );
+                Debug.Assert( len == buffer.Length );
+
+                // Scan the buffer using the same logic we use for normal read: BinaryReader, ReadUInt32, etc.
+
+                using ( var tempStream = new MemoryStream( buffer, false ) )
+                using ( var reader = new BinaryReader( tempStream, Encoding.UTF8, true ) )
+                {
+                    // Start from the last uint32.
+                    var tempPos = buffer.Length - sizeof( uint );
+                    do
+                    {
+                        AssertAligned( chunkPos + tempPos );
+                        tempStream.Position = tempPos;
+                        var magic = reader.ReadUInt32();
+                        if ( magic == CloseMark )
+                            return chunkPos + tempStream.Position;
+
+                        tempPos -= sizeof( uint );
+                    } while ( tempPos >= 0 );
+                }
+
+                pos = chunkPos;
             }
         }
 
@@ -461,8 +530,13 @@ namespace wcmd.DataFiles
 
         private void AssertAligned( long pos )
         {
-            if ( pos != Align( pos ) )
+            if ( pos != AlignBack( pos ) )
                 throw new InvalidOperationException( $"File {_fileInfo.FullName}, stream is not aligned. Expected {Align( pos )}, found {pos}." );
+        }
+
+        private static long AlignBack( long value )
+        {
+            return value - value % 4L;
         }
 
         private static ushort Align( ushort value )
@@ -508,39 +582,56 @@ namespace wcmd.DataFiles
 
         private BinaryWriter GetWriterForAppend()
         {
-            var stream = new FileStream( _fileInfo.FullName, FileMode.Append, FileAccess.Write, FileShare.Delete );
-            var writer = new BinaryWriter( stream, Encoding.UTF8 );
-            return writer;
-        }
-
-        private BinaryReader GetReader()
-        {
-            FileStream stream;
-
             var sw = Stopwatch.StartNew();
+            var backoff = 125;
             for ( ;; )
             {
                 try
                 {
-                    stream = new FileStream( _fileInfo.FullName, FileMode.OpenOrCreate, FileAccess.Read, FileShare.Delete );
-                    break;
+                    var stream = new FileStream( _fileInfo.FullName, FileMode.Append, FileAccess.Write, FileShare.Delete );
+                    var writer = new BinaryWriter( stream, Encoding.UTF8 );
+                    return writer;
                 }
                 catch ( IOException ex )
                 {
-                    if ( (uint) ex.HResult == 0x80070020 && sw.ElapsedMilliseconds < 5000 )
+                    if ( sw.ElapsedMilliseconds > 2000 )
                     {
-                        _trace.TraceInformation( "File in use: {0}", _fileInfo.FullName );
-                        Thread.Sleep( 250 );
-                        continue;
+                        _trace.TraceError( "{0}", ex );
+                        throw;
                     }
 
-                    _trace.TraceError( "{0}\r\nHResult: {1}\r\nDetails: {2}\r\n", ex.Message, ex.HResult, ex );
-                    throw;
+                    _trace.TraceWarning( "Error attempting to create writer for append: {0}.\r\n\r\nWill retry...", ex.Message );
+                    Thread.Sleep( backoff );
+                    backoff *= 2;
                 }
             }
+        }
 
-            var reader = new BinaryReader( stream, Encoding.UTF8 );
-            return reader;
+        private BinaryReader GetReader()
+        {
+            var sw = Stopwatch.StartNew();
+            var backoff = 125;
+            for ( ;; )
+            {
+                try
+                {
+                    var stream = new FileStream( _fileInfo.FullName, FileMode.OpenOrCreate, FileAccess.Read, FileShare.Delete );
+                    var reader = new BinaryReader( stream, Encoding.UTF8 );
+                    return reader;
+                }
+                catch ( IOException ex )
+                {
+                    if ( sw.ElapsedMilliseconds > 4000 )
+                    {
+                        _trace.TraceError( "{0}", ex );
+                        throw;
+                    }
+
+                    _trace.TraceWarning( "Error attempting to create reader: {0}.\r\n\r\nWill retry...", ex.Message );
+                    Thread.Sleep( backoff );
+                    backoff *= 2;
+                }
+            }
         }
 
         private static DataFileRecord ToRecord( ItemPayload payload )

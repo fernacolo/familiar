@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
+using wcmd.DataFiles;
 using wcmd.Diagnostics;
 using wcmd.Native;
 using wcmd.UI;
@@ -62,6 +64,44 @@ namespace wcmd
                     _trace.TraceWarning( "No console window detected." );
                     MessageBox.Show( "Console not detected.\r\nPlease, start the familiar from Command Prompt.", "Familiar Notification", MessageBoxButton.OK, MessageBoxImage.Information );
                     Current.Shutdown( ExitCodes.ConsoleNotDetected );
+                    return;
+                }
+
+                if ( args.Length > 2 && args[1] == "--readforward" )
+                {
+                    var fileToRead = new FileInfo( args[2] );
+                    var file = new FileStore( fileToRead );
+                    var current = file.Bof;
+                    var count = 0;
+                    for ( ;; )
+                    {
+                        current = file.GetNext( current );
+                        if ( current == file.Eof )
+                            break;
+                        ++count;
+                    }
+
+                    Console.WriteLine( "Read finished. Found {0} records.", count );
+                    Current.Shutdown( ExitCodes.TestFinished );
+                    return;
+                }
+
+                if ( args.Length > 2 && args[1] == "--readbackward" )
+                {
+                    var fileToRead = new FileInfo( args[2] );
+                    var file = new FileStore( fileToRead );
+                    var current = file.Eof;
+                    var count = 0;
+                    for ( ;; )
+                    {
+                        current = file.GetPrevious( current );
+                        if ( current == file.Bof )
+                            break;
+                        ++count;
+                    }
+
+                    Console.WriteLine( "Read finished. Found {0} records.", count );
+                    Current.Shutdown( ExitCodes.TestFinished );
                     return;
                 }
             }
