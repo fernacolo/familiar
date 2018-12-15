@@ -48,11 +48,11 @@ namespace wcmd.DataFiles
                 {
                     var state = new ReplicationState( _trace, _destination );
 
-                    _trace.TraceInformation( "Attempting to lock {0}...", mutexName );
+                    _trace.TraceVerbose( "Attempting to lock {0}...", mutexName );
                     mutex.WaitOne();
                     try
                     {
-                        _trace.TraceInformation( "Acquired lock on {0}.", mutexName );
+                        _trace.TraceVerbose( "Acquired lock on {0}.", mutexName );
 
                         if ( state.AgeOfLastChange > _timeBetweenPolls )
                         {
@@ -63,7 +63,7 @@ namespace wcmd.DataFiles
                             {
                                 if ( !_accept( sourceFile.Name ) )
                                     continue;
-                                _trace.TraceInformation( "Found file to replicate: {0}", sourceFile.FullName );
+                                _trace.TraceVerbose( "Found file to replicate: {0}", sourceFile.FullName );
                                 sourceFiles.Add( sourceFile );
                             }
 
@@ -83,7 +83,7 @@ namespace wcmd.DataFiles
                         }
                         else
                         {
-                            _trace.TraceInformation( "Ignored replication state because there was a recent change." );
+                            _trace.TraceVerbose( "Replication not needed at this time." );
                         }
                     }
                     catch ( Exception ex )
@@ -95,7 +95,7 @@ namespace wcmd.DataFiles
                         mutex.ReleaseMutex();
                     }
 
-                    _trace.TraceInformation( "Released lock on {0}. Sleeping for {1} seconds before next poll.", mutexName, _timeBetweenPolls.TotalSeconds );
+                    _trace.TraceVerbose( "Released lock on {0}. Sleeping for {1} seconds before next poll.", mutexName, _timeBetweenPolls.TotalSeconds );
 
                     Thread.Sleep( _timeBetweenPolls );
                 }
@@ -108,7 +108,7 @@ namespace wcmd.DataFiles
 
         private void Replicate( FileInfo sourceFile, FileReplicationState state, ref IDataStore target )
         {
-            _trace.TraceInformation( "Verifying for modifications inbound file: {0}.", sourceFile.FullName );
+            _trace.TraceVerbose( "Verifying for modifications inbound file: {0}.", sourceFile.FullName );
             var source = new FileStore( sourceFile );
 
             var lastReadLink = state.LastReadLink;
@@ -123,7 +123,7 @@ namespace wcmd.DataFiles
 
                 if ( changeDetected == false )
                 {
-                    _trace.TraceInformation( "External changes were detected." );
+                    _trace.TraceInformation( "Changes detected at {0}.", sourceFile.FullName );
                     changeDetected = true;
                 }
 
@@ -136,7 +136,7 @@ namespace wcmd.DataFiles
 
             if ( !changeDetected )
             {
-                _trace.TraceInformation( "No external change was detected." );
+                _trace.TraceVerbose( "No change detected." );
 
                 if ( isLinkValid )
                     return;
@@ -285,7 +285,7 @@ namespace wcmd.DataFiles
                 {
                     _fileInfo.Refresh();
                     var lastWriteUtc = _fileInfo.LastWriteTimeUtc;
-                    _trace.TraceInformation( "Replication state file {0} was modified at {1:O}.", _fileInfo.FullName, lastWriteUtc );
+                    _trace.TraceVerbose( "Replication state file {0} was modified at {1:O}.", _fileInfo.FullName, lastWriteUtc );
 
                     return DateTime.UtcNow - _fileInfo.LastWriteTimeUtc;
                 }
@@ -305,7 +305,7 @@ namespace wcmd.DataFiles
                 return;
             }
 
-            _trace.TraceInformation( "Reading replication state file: {0}", _fileInfo.FullName );
+            _trace.TraceVerbose( "Reading replication state file: {0}", _fileInfo.FullName );
 
             using ( var stream = new FileStream( _fileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete ) )
             using ( var reader = new BinaryReader( stream, Encoding.UTF8, true ) )
@@ -322,7 +322,7 @@ namespace wcmd.DataFiles
 
         public void Write()
         {
-            _trace.TraceInformation( "Writing replication state file: {0}", _fileInfo.FullName );
+            _trace.TraceVerbose( "Writing replication state file: {0}", _fileInfo.FullName );
 
             using ( var stream = new FileStream( _fileInfo.FullName, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Delete ) )
             {

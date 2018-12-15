@@ -43,7 +43,7 @@ namespace wcmd.UI
             if ( findings == _lastFindings )
                 return;
 
-            _trace.TraceInformation( "Detected new findings" );
+            _trace.TraceVerbose( "Detected new findings" );
 
             CurrentFindings.Clear();
             if ( findings != null )

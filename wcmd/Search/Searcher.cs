@@ -64,7 +64,7 @@ namespace wcmd
 
         private void Submit( Request request )
         {
-            _trace.TraceInformation( "Submitting request: {0}, {1}", request.Type, request.SearchText );
+            _trace.TraceVerbose( "Submitting request: {0}, {1}", request.Type, request.SearchText );
             _requests.Enqueue( request );
             _newRequest.Release();
         }
@@ -79,14 +79,14 @@ namespace wcmd
 
             for ( ;; )
             {
-                _trace.TraceInformation( "Awaiting for request..." );
+                _trace.TraceVerbose( "Awaiting for request..." );
 
                 _newRequest.Wait();
 
                 var signaled = _requests.TryDequeue( out var request );
                 Debug.Assert( signaled );
 
-                _trace.TraceInformation( "Got request: {0}, {1}", request.Type, request.SearchText );
+                _trace.TraceVerbose( "Got request: {0}, {1}", request.Type, request.SearchText );
 
                 switch ( request.Type )
                 {
@@ -98,7 +98,7 @@ namespace wcmd
 
                         if ( currentMatcher != null && newMatcher.Contains( currentMatcher ) )
                         {
-                            _trace.TraceInformation( "New matcher ({0}) contains the old one ({1})", newMatcher, currentMatcher );
+                            _trace.TraceVerbose( "New matcher ({0}) contains the old one ({1})", newMatcher, currentMatcher );
 
                             // The new search text contains the previous one (i.e. previous = abc, new = abcd).
                             // We don't need to start search from zero.
@@ -110,7 +110,7 @@ namespace wcmd
                                 var currentResult = currentResults[i];
                                 if ( !newMatcher.IsMatch( currentResult ) )
                                 {
-                                    _trace.TraceInformation( "Removing item {0} from findings ({1})", i, currentResult.Original );
+                                    _trace.TraceVerbose( "Removing item {0} from findings ({1})", i, currentResult.Original );
                                     currentResults.RemoveAt( i );
                                     currentCommands.Remove( currentResult.Original );
                                 }
@@ -166,7 +166,7 @@ namespace wcmd
                                     break;
                             }
                             else
-                                _trace.TraceInformation( "Not adding item to findings. isMatch: {0}, contains: {1}. ({2})", isMatch, contains, command.Original );
+                                _trace.TraceVerbose( "Not adding item to findings. isMatch: {0}, contains: {1}. ({2})", isMatch, contains, command.Original );
                         } while ( sw.ElapsedMilliseconds <= 200 );
 
                         CompleteSearch( changed, currentMatcher, currentResults, searchCallback );
@@ -190,7 +190,7 @@ namespace wcmd
         {
             if ( changed )
             {
-                _trace.TraceInformation( "New findings: {0}, {1} items", matcher.Term, foundItems.Count );
+                _trace.TraceVerbose( "New findings: {0}, {1} items", matcher.Term, foundItems.Count );
                 var items = new List<IStoredItem>( foundItems.Count );
                 foreach ( var command in foundItems )
                     items.Add( command.Stored );

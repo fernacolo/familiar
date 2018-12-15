@@ -31,6 +31,11 @@ namespace wcmd.Diagnostics
         {
             source.TraceEvent( TraceEventType.Warning, 0, message, args );
         }
+
+        public static void TraceVerbose( this TraceSource source, string message, params object[] args )
+        {
+            source.TraceEvent( TraceEventType.Verbose, 0, message, args );
+        }
     }
 
     public sealed class LogViewTraceListener : TraceListener
@@ -150,6 +155,8 @@ namespace wcmd.Diagnostics
 
         public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string message )
         {
+            if ( eventType > TraceEventType.Information )
+                return;
             var eventLog = _cache.GetOrAdd( source, CreateEventLog );
             eventLog.WriteEntry( message ?? "(no message)", ToEntryType( eventType ), id );
         }

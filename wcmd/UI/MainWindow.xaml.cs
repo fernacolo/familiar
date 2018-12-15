@@ -50,25 +50,25 @@ namespace wcmd.UI
             _machineName = Environment.MachineName;
 
             var inputLanguage = InputLanguage.CurrentInputLanguage;
-            _trace.TraceInformation( "Input language {0}: {1}", nameof( inputLanguage.LayoutName ), inputLanguage.LayoutName );
+            _trace.TraceVerbose( "Input language {0}: {1}", nameof( inputLanguage.LayoutName ), inputLanguage.LayoutName );
 
             var culture = inputLanguage.Culture;
-            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.DisplayName ), culture.DisplayName );
-            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.EnglishName ), culture.EnglishName );
-            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.IsNeutralCulture ), culture.IsNeutralCulture );
-            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.Name ), culture.Name );
-            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.KeyboardLayoutId ), culture.KeyboardLayoutId );
-            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.NativeName ), culture.NativeName );
-            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.ThreeLetterISOLanguageName ), culture.ThreeLetterISOLanguageName );
-            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.ThreeLetterWindowsLanguageName ), culture.ThreeLetterWindowsLanguageName );
-            _trace.TraceInformation( "Input language culture {0}: {1}", nameof( culture.TwoLetterISOLanguageName ), culture.TwoLetterISOLanguageName );
+            _trace.TraceVerbose( "Input language culture {0}: {1}", nameof( culture.DisplayName ), culture.DisplayName );
+            _trace.TraceVerbose( "Input language culture {0}: {1}", nameof( culture.EnglishName ), culture.EnglishName );
+            _trace.TraceVerbose( "Input language culture {0}: {1}", nameof( culture.IsNeutralCulture ), culture.IsNeutralCulture );
+            _trace.TraceVerbose( "Input language culture {0}: {1}", nameof( culture.Name ), culture.Name );
+            _trace.TraceVerbose( "Input language culture {0}: {1}", nameof( culture.KeyboardLayoutId ), culture.KeyboardLayoutId );
+            _trace.TraceVerbose( "Input language culture {0}: {1}", nameof( culture.NativeName ), culture.NativeName );
+            _trace.TraceVerbose( "Input language culture {0}: {1}", nameof( culture.ThreeLetterISOLanguageName ), culture.ThreeLetterISOLanguageName );
+            _trace.TraceVerbose( "Input language culture {0}: {1}", nameof( culture.ThreeLetterWindowsLanguageName ), culture.ThreeLetterWindowsLanguageName );
+            _trace.TraceVerbose( "Input language culture {0}: {1}", nameof( culture.TwoLetterISOLanguageName ), culture.TwoLetterISOLanguageName );
 
             var textInfo = culture.TextInfo;
-            _trace.TraceInformation( "Input language culture text info {0}: {1}", nameof( textInfo.ANSICodePage ), textInfo.ANSICodePage );
-            _trace.TraceInformation( "Input language culture text info {0}: {1}", nameof( textInfo.CultureName ), textInfo.CultureName );
-            _trace.TraceInformation( "Input language culture text info {0}: {1}", nameof( textInfo.EBCDICCodePage ), textInfo.EBCDICCodePage );
-            _trace.TraceInformation( "Input language culture text info {0}: {1}", nameof( textInfo.MacCodePage ), textInfo.MacCodePage );
-            _trace.TraceInformation( "Input language culture text info {0}: {1}", nameof( textInfo.OEMCodePage ), textInfo.OEMCodePage );
+            _trace.TraceVerbose( "Input language culture text info {0}: {1}", nameof( textInfo.ANSICodePage ), textInfo.ANSICodePage );
+            _trace.TraceVerbose( "Input language culture text info {0}: {1}", nameof( textInfo.CultureName ), textInfo.CultureName );
+            _trace.TraceVerbose( "Input language culture text info {0}: {1}", nameof( textInfo.EBCDICCodePage ), textInfo.EBCDICCodePage );
+            _trace.TraceVerbose( "Input language culture text info {0}: {1}", nameof( textInfo.MacCodePage ), textInfo.MacCodePage );
+            _trace.TraceVerbose( "Input language culture text info {0}: {1}", nameof( textInfo.OEMCodePage ), textInfo.OEMCodePage );
 
             _parentProcess = Process.GetProcessById( parentPid );
             _parentProcessObserver = new Thread( ParentProcessObserver );
@@ -83,12 +83,12 @@ namespace wcmd.UI
 
             InitializeComponent();
 
-            _trace.TraceInformation( "Main window object created." );
+            _trace.TraceVerbose( "Main window object created." );
         }
 
         private void Window_Loaded( object sender, RoutedEventArgs e )
         {
-            _trace.TraceInformation( "Reading configuration..." );
+            _trace.TraceVerbose( "Reading configuration..." );
             var config = Configuration.LoadDefault() ?? Configuration.CreateDefault();
 
             // TODO: Should be provided by config.
@@ -119,8 +119,7 @@ namespace wcmd.UI
             }
             else
             {
-                _trace.TraceWarning( "Shared folder not found: {0}.", config.SharedDirectory?.FullName );
-                _trace.TraceWarning( "Replication is disabled." );
+                _trace.TraceWarning( "Shared folder not found: {0}\r\n\r\nReplication is disabled.", config.SharedDirectory?.FullName );
             }
 
             _parentProcessObserver.Start();
@@ -234,7 +233,7 @@ namespace wcmd.UI
                             {
                                 if ( windowPlacement.showCmd == ShowWindowValue.SW_MAXIMIZE )
                                 {
-                                    _trace.TraceInformation( "Maximization detected; will try to smart-maximize." );
+                                    _trace.TraceVerbose( "Maximization detected; will try to smart-maximize." );
                                     User32.ShowWindow( _targetWindow, ShowWindowValue.SW_RESTORE );
                                     if ( !WaitForRestore( _targetWindow, TimeSpan.FromMilliseconds( 500 ) ) )
                                     {
@@ -296,7 +295,7 @@ namespace wcmd.UI
             }
             catch ( Exception ex )
             {
-                _trace.TraceError( "{0}", ex.ToString() );
+                _trace.TraceError( "{0}", ex );
             }
         }
 
@@ -394,7 +393,7 @@ namespace wcmd.UI
             var textRange = new TextRange( document.ContentStart, document.ContentEnd );
             var text = textRange.Text;
             text = text.TrimEnd( '\r', '\n', ' ', '\t' );
-            _trace.TraceInformation( "Writing \"{0}\"...", text );
+            _trace.TraceVerbose( "Writing \"{0}\"...", text );
 
             var adjustedText = AdjustForAccentSymbols( text );
             adjustedText = AdjustForSpecialCharacters( adjustedText );
@@ -452,11 +451,11 @@ namespace wcmd.UI
                 }
 
                 text = result.ToString();
-                _trace.TraceInformation( "Because of keyboard layout ({0}), text was adjusted to \"{1}\".", keyboardLayout, text );
+                _trace.TraceWarning( "Because of keyboard layout ({0}), text was adjusted to \"{1}\".", keyboardLayout, text );
                 return text;
             }
 
-            _trace.TraceInformation( "Keyboard layout is {0}, but no accent symbol was found.", keyboardLayout );
+            _trace.TraceVerbose( "Keyboard layout is {0}, but no accent symbol was found.", keyboardLayout );
             return text;
         }
 
@@ -503,7 +502,7 @@ namespace wcmd.UI
                 return text;
             }
 
-            _trace.TraceInformation( "Text has no special char." );
+            _trace.TraceVerbose( "Text has no special char." );
             return text;
         }
 

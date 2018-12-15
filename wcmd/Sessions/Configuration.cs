@@ -35,8 +35,7 @@ namespace wcmd.Sessions
 
             if ( !dbDirectory.Exists )
             {
-                _trace.TraceWarning( "Local database directory does not exist: {0}", dbDirectory.FullName );
-                _trace.TraceInformation( "Trying to create local database directory..." );
+                _trace.TraceWarning( "Local database directory does not exist: {0}\r\nTrying to create...", dbDirectory.FullName );
                 dbDirectory.Create();
             }
 
@@ -56,7 +55,7 @@ namespace wcmd.Sessions
             if ( string.IsNullOrWhiteSpace( appDataRoot ) )
                 throw new Exception( "The special folder LocalApplicationData is not specified." );
 
-            _trace.TraceInformation( "Environment LocalApplicationData: {0}", appDataRoot );
+            _trace.TraceVerbose( "Environment LocalApplicationData: {0}", appDataRoot );
 
             var dbDir = new DirectoryInfo( Path.Combine( appDataRoot, Constants.LocalDirectory ) );
             _trace.TraceInformation( "Local database directory: {0}", dbDir );
@@ -75,10 +74,10 @@ namespace wcmd.Sessions
 
         private static Configuration LoadFromFile( FileInfo configFile )
         {
-            _trace.TraceInformation( "Reading configuration file: {0}", configFile );
+            _trace.TraceVerbose( "Reading configuration file: {0}", configFile );
             if ( !configFile.Exists )
             {
-                _trace.TraceInformation( "Configuration file does not exist." );
+                _trace.TraceInformation( "Configuration file does not exist: {0}", configFile );
                 return null;
             }
 

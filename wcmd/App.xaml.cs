@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Windows;
 using wcmd.DataFiles;
@@ -25,9 +26,18 @@ namespace wcmd
             LogViewTraceListener.Actual = new WindowsApplicationEventTraceListener();
             _trace = DiagnosticsCenter.GetTraceSource( nameof( App ) );
 
+            var currentProcess = Process.GetCurrentProcess();
+            var currentPid = currentProcess.Id;
+
+            var message = new StringBuilder();
+            message.AppendLine( "Starting the familiar." );
+            message.AppendLine( $"PID: {currentPid}" );
+            message.AppendLine( $"Image: {currentProcess.MainModule.FileName}" );
             var args = Environment.GetCommandLineArgs();
             for ( var i = 0; i < args.Length; ++i )
-                _trace.TraceInformation( "args[{0}]: {1}", i, args[i] );
+                message.AppendLine( $"args[{i}]: {args[i]}" );
+
+            _trace.TraceInformation( "{0}", message );
 
             int parentPid;
             var targetWindow = IntPtr.Zero;
@@ -53,10 +63,10 @@ namespace wcmd
                 //var stream = new FileStream( logFileName, FileMode.Append, FileAccess.Write, FileShare.Read | FileShare.Delete, 1, false );
                 //LogViewTraceListener.Actual = new TextWriterTraceListener( stream );
 
-                parentPid = GetParentProcessId( Process.GetCurrentProcess() );
+                parentPid = GetParentProcessId( currentProcess );
 
                 var attached = Kernel32.AttachConsole( (uint) parentPid );
-                _trace.TraceInformation( "{0} returned {1}", nameof( Kernel32.AttachConsole ), attached );
+                _trace.TraceVerbose( "{0} returned {1}", nameof( Kernel32.AttachConsole ), attached );
 
                 targetWindow = Kernel32.GetConsoleWindow();
                 if ( targetWindow == IntPtr.Zero )
@@ -107,15 +117,13 @@ namespace wcmd
             }
 
             var mutexName = $"fam-{parentPid}";
-            _trace.TraceInformation( "Creating mutex named {0}...", mutexName );
+            _trace.TraceVerbose( "Creating mutex named {0}...", mutexName );
 
             _mutex = new Mutex( false, mutexName, out var createdNew );
             if ( !createdNew )
             {
                 _mutex.Dispose();
                 _mutex = null;
-
-                var currentPid = Process.GetCurrentProcess().Id;
 
                 _trace.TraceWarning( "Unable to create mutex {0}. This process ({1}) will attempt to find a previous one attached to PID {2} and activate.", mutexName, currentPid, parentPid );
 
@@ -162,10 +170,10 @@ namespace wcmd
         {
             var processBasicInformation = new smPROCESS_BASIC_INFORMATION();
             var result = Ntdll.NtQueryInformationProcess( process.Handle, Ntdll.ProcessBasicInformation, ref processBasicInformation, Marshal.SizeOf( processBasicInformation ), out var returnLength );
-            _trace.TraceInformation( "{0} returned {1}", nameof( Ntdll.NtQueryInformationProcess ), result );
+            _trace.TraceVerbose( "{0} returned {1}", nameof( Ntdll.NtQueryInformationProcess ), result );
 
             var parentPid = processBasicInformation.InheritedFromUniqueProcessId.ToInt32();
-            _trace.TraceInformation( "Parent PID: {0}", parentPid );
+            _trace.TraceVerbose( "Parent PID: {0}", parentPid );
             return parentPid;
         }
 

@@ -42,35 +42,6 @@ namespace wcmd.DataFiles
 
         public string FileName => _fileInfo.Name;
 
-        public void DumpRecords()
-        {
-            var lastGoodPosition = 0L;
-            try
-            {
-                using ( var reader = GetReader() )
-                {
-                    var stream = reader.BaseStream;
-                    var length = stream.Length;
-                    while ( stream.Position < length )
-                    {
-                        _trace.TraceInformation( "Reading at {0}", stream.Position );
-                        var size = ReadOpenMark( reader );
-                        _trace.TraceInformation( "Found record with size: {0}", size );
-                        reader.ReadBytes( Align( size ) );
-                        ReadCloseMark( reader );
-                        lastGoodPosition = stream.Position;
-                    }
-                }
-            }
-            catch ( Exception ex )
-            {
-                _trace.TraceError( "{0}", ex );
-                using ( var stream = new FileStream( _fileInfo.FullName, FileMode.Open, FileAccess.Write, FileShare.Delete ) )
-                    stream.SetLength( lastGoodPosition );
-                _trace.TraceInformation( "File was truncated at: {0}.", lastGoodPosition );
-            }
-        }
-
         private readonly IStoredItem _bof = new FileStoreItem( null, -1L, null, 0 );
         private readonly IStoredItem _eof = new FileStoreItem( null, long.MaxValue, null, 0 );
 
@@ -232,7 +203,7 @@ namespace wcmd.DataFiles
                     stream.Position = position;
                     var binarySize = 0;
                     var record = ReadRecord( reader, ref binarySize );
-                    _trace.TraceInformation( "A previous link was resolved into a record at offset {0}.", position );
+                    _trace.TraceVerbose( "A previous link was resolved into a record at offset {0}.", position );
                     return new FileStoreItem( stateTag, position, ToPayload( record ), binarySize );
                 }
             }
@@ -294,7 +265,7 @@ namespace wcmd.DataFiles
             {
                 if ( pos >= stream.Length )
                 {
-                    _trace.TraceInformation( "End of stream found at offset {0}.", pos );
+                    _trace.TraceVerbose( "End of stream found at offset {0}.", pos );
                     return null;
                 }
 
@@ -303,7 +274,7 @@ namespace wcmd.DataFiles
                 try
                 {
                     var record = ReadRecord( reader, ref binarySize );
-                    _trace.TraceInformation( "A record was read at offset {0}.", pos );
+                    _trace.TraceVerbose( "A record was read at offset {0}.", pos );
                     pos = Align( stream.Position );
                     return record;
                 }
