@@ -100,9 +100,7 @@ namespace wcmd.UI
             IDataStore localStore = new FileStore( config );
             localStore = new FilteredDataStore( localStore, IsCommand );
 
-            var cachedStore = new CachedDataStore( localStore );
-
-            _dataStore = cachedStore;
+            _dataStore = new NewOnTailDataStore( localStore );
             _position = _dataStore.Eof;
 
             // The localStore must be the last.
