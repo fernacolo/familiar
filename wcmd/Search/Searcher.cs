@@ -71,7 +71,7 @@ namespace wcmd
 
         private void BackgroundThread()
         {
-            var currentMatcher = (Matcher) null;
+            IMatcher currentMatcher = (SimpleMatcher) null;
             var currentResults = new List<Command>();
             var currentCommands = new HashSet<string>();
             var lastRead = _dataStore.Eof;
@@ -92,7 +92,7 @@ namespace wcmd
                 {
                     case RequestType.SetSearchText:
                     {
-                        var newMatcher = new Matcher( request.SearchText );
+                        var newMatcher = MatcherBuiler.Build( request.SearchText );
                         searchCallback = request.Callback;
                         bool changed;
 
@@ -186,7 +186,7 @@ namespace wcmd
             }
         }
 
-        private void CompleteSearch( bool changed, Matcher matcher, IReadOnlyCollection<Command> foundItems, Action notifyAction )
+        private void CompleteSearch( bool changed, IMatcher matcher, IReadOnlyCollection<Command> foundItems, Action notifyAction )
         {
             if ( changed )
             {

@@ -79,7 +79,8 @@
     <Compile Include="Native\WINDOWPLACEMENT.cs" />
     <Compile Include="Search\Command.cs" />
     <Compile Include="Search\Findings.cs" />
-    <Compile Include="Search\Matcher.cs" />
+    <Compile Include="Search\IMatcher.cs" />
+    <Compile Include="Search\SimpleMatcher.cs" />
     <Compile Include="Search\Searcher.cs" />
     <Compile Include="Sessions\Configuration.cs" />
     <Compile Include="Sessions\Constants.cs" />
