@@ -22,6 +22,7 @@ namespace wcmd.DataFiles
             _destination = destination;
             _thread = new Thread( Run );
             _thread.IsBackground = true;
+            _thread.Priority = ThreadPriority.Lowest;
             _timeBetweenPolls = timeBetweenPolls;
             _accept = accept;
         }

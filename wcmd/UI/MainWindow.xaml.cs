@@ -78,7 +78,7 @@ namespace wcmd.UI
 
             _consoleWindowObserver = new Thread( ConsoleWindowObserver );
             // Set priority a bit higher than normal so this thread get cycles when our app is not active.
-            _consoleWindowObserver.Priority = ThreadPriority.AboveNormal;
+            //_consoleWindowObserver.Priority = ThreadPriority.AboveNormal; // Commented to avoid issues on 2016 server.
             _consoleWindowObserver.IsBackground = true;
 
             InitializeComponent();
