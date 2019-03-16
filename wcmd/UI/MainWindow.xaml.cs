@@ -532,6 +532,27 @@ namespace wcmd.UI
             }
         }
 
+        private void RtCommand_SelectionChanged( object sender, RoutedEventArgs e )
+        {
+            var tp1 = RtCommand.Selection.Start.GetLineStartPosition( 0 );
+            var tp2 = RtCommand.Selection.Start;
+
+            var column = tp1.GetOffsetToPosition( tp2 );
+
+            var cp = RtCommand.CaretPosition;
+            var chars = new char[10];
+            var count = cp.GetTextInRun( LogicalDirection.Forward, chars, 0, chars.Length );
+            var forward = new string( chars, 0, count );
+
+            count = cp.GetTextInRun( LogicalDirection.Backward, chars, 0, chars.Length );
+            var backward = new string( chars, 0, count );
+
+            RtCommand.Selection.Start.GetLineStartPosition( -int.MaxValue, out var lineMoved );
+            var currentLineNumber = -lineMoved;
+
+            LbStatus.Content = $"Fwd: '{forward}', Bwd: '{backward}'";
+        }
+
         /*
         private VirtualKeyCode ToVirtualKeyCode( char ch )
         {

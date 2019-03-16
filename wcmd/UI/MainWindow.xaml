@@ -12,9 +12,10 @@
             <MenuItem Header="_Quit" Click="MiQuit_Click" />
             <MenuItem Header="_Search" Click="MiSearch_Click" />
         </Menu>
-        <RichTextBox DockPanel.Dock="Top" x:Name="RtCommand" FontFamily="Consolas" AcceptsReturn="False"
+        <Label x:Name="LbStatus" DockPanel.Dock="Bottom"></Label>
+        <RichTextBox x:Name="RtCommand" FontFamily="Consolas" AcceptsReturn="False"
                      TextOptions.TextFormattingMode="Display" KeyDown="RtCommand_KeyDown"
-                     PreviewKeyDown="RtCommand_PreviewKeyDown" />
+                     PreviewKeyDown="RtCommand_PreviewKeyDown" SelectionChanged="RtCommand_SelectionChanged" />
     </DockPanel>
 
     <!--Grid>
