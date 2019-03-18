@@ -1,140 +1,26 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{AE667FE1-2321-480B-9882-F47F005FD8D3}</ProjectGuid>
     <OutputType>WinExe</OutputType>
+    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>7.3</LangVersion>
     <RootNamespace>wcmd</RootNamespace>
-    <AssemblyName>wcmd</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
-    <WarningLevel>4</WarningLevel>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <LangVersion>7.2</LangVersion>
-    <TargetFrameworkProfile />
+    <VersionPrefix>0.8.9</VersionPrefix>
+    <Title>Familiar</Title>
+    <Authors>Fernando Colombo</Authors>
+    <Description>The Familiar is a loyal friend to command line adventurers.</Description>
+    <PackageProjectUrl>https://github.com/fernacolo/familiar</PackageProjectUrl>
+    <PackageLicenseUrl>https://github.com/fernacolo/familiar/blob/master/LICENSE</PackageLicenseUrl>
+    <PackageType>DotnetTool</PackageType>
+    <!--PackAsTool>true</PackAsTool-->
+    <RepositoryUrl>https://github.com/fernacolo/familiar.git</RepositoryUrl>
+    <RepositoryType>Git</RepositoryType>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
-  </PropertyGroup>
-  <PropertyGroup>
-    <StartupObject />
-  </PropertyGroup>
+
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xml" />
-    <Reference Include="System.Xaml">
-      <RequiredTargetFramework>4.0</RequiredTargetFramework>
-    </Reference>
-    <Reference Include="WindowsBase" />
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
+    <PackageReference Include="CommandLineParser" Version="2.4.3" />
+    <PackageReference Include="System.Diagnostics.EventLog" Version="4.5.0" />
   </ItemGroup>
-  <ItemGroup>
-    <ApplicationDefinition Include="App.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </ApplicationDefinition>
-    <Compile Include="DataFiles\FilteredDataStore.cs" />
-    <Compile Include="DataFiles\CachedDataStore.cs" />
-    <Compile Include="DataFiles\DataCorruptionException.cs" />
-    <Compile Include="DataFiles\DataFileRecord.cs" />
-    <Compile Include="DataFiles\IDataStore.cs" />
-    <Compile Include="DataFiles\InboundReplication.cs" />
-    <Compile Include="DataFiles\NewOnTailDataStore.cs" />
-    <Compile Include="DataFiles\MergedDataStore.cs" />
-    <Compile Include="Diagnostics\DiagnosticsCenter.cs" />
-    <Compile Include="Native\Ntdll.cs" />
-    <Compile Include="Native\POINT.cs" />
-    <Compile Include="Native\ShowWindowValue.cs" />
-    <Compile Include="Native\VirtualKeyCode.cs" />
-    <Compile Include="Native\COORD.cs" />
-    <Compile Include="Native\INPUT_RECORD.cs" />
-    <Compile Include="Native\RECT.cs" />
-    <Compile Include="Native\SECURITY_ATTRIBUTES.cs" />
-    <Compile Include="Native\WINDOWPLACEMENT.cs" />
-    <Compile Include="Search\Command.cs" />
-    <Compile Include="Search\Findings.cs" />
-    <Compile Include="Search\IMatcher.cs" />
-    <Compile Include="Search\SimpleMatcher.cs" />
-    <Compile Include="Search\Searcher.cs" />
-    <Compile Include="Sessions\Configuration.cs" />
-    <Compile Include="Sessions\Constants.cs" />
-    <Compile Include="DataFiles\Serializer.cs" />
-    <Compile Include="DataFiles\FileStore.cs" />
-    <Compile Include="DataFiles\SizeOnlyStream.cs" />
-    <Compile Include="DataFiles\ReplicationJob.cs" />
-    <Compile Include="UI\SearchWindow.xaml.cs">
-      <DependentUpon>SearchWindow.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="UI\AttachSelector.xaml.cs">
-      <DependentUpon>AttachSelector.xaml</DependentUpon>
-    </Compile>
-    <Page Include="UI\MainWindow.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Compile Include="App.xaml.cs">
-      <DependentUpon>App.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Native\Kernel32.cs" />
-    <Compile Include="UI\MainWindow.xaml.cs">
-      <DependentUpon>MainWindow.xaml</DependentUpon>
-      <SubType>Code</SubType>
-    </Compile>
-    <Page Include="UI\SearchWindow.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="UI\AttachSelector.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Include="Native\User32.cs" />
-    <Compile Include="Native\WindowStyles.cs" />
-    <Compile Include="Native\WindowStylesEx.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Properties\Resources.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
-    <EmbeddedResource Include="Properties\Resources.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="App.config" />
-  </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+
 </Project>
