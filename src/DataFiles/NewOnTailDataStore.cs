@@ -182,7 +182,7 @@ namespace fam.DataFiles
             }
 
             // The loop above must have updated the old last.
-            if ( _last != null )
+            if ( _last != null && _last != _bof )
                 Debug.Assert( _last._next == newLast );
 
             _last = newLast;
