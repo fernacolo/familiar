@@ -6,14 +6,15 @@
     <UseWPF>true</UseWPF>
     <LangVersion>7.3</LangVersion>
     <RootNamespace>fam</RootNamespace>
-    <VersionPrefix>0.8.9</VersionPrefix>
+    <VersionPrefix>0.1.3</VersionPrefix>
     <Title>Familiar</Title>
     <Authors>Fernando Colombo</Authors>
     <Description>The Familiar is a loyal friend to command line adventurers.</Description>
+    <PackageId>Familiar</PackageId>
     <PackageProjectUrl>https://github.com/fernacolo/familiar</PackageProjectUrl>
     <PackageLicenseUrl>https://github.com/fernacolo/familiar/blob/master/LICENSE</PackageLicenseUrl>
     <PackageType>DotnetTool</PackageType>
-    <!--PackAsTool>true</PackAsTool-->
+    <PackAsTool Condition="'$(BuildingInsideVisualStudio)'!='true'">true</PackAsTool>
     <RepositoryUrl>https://github.com/fernacolo/familiar.git</RepositoryUrl>
     <RepositoryType>Git</RepositoryType>
   </PropertyGroup>
