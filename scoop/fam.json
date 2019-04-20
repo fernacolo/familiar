@@ -1,0 +1,11 @@
+{
+    "homepage": "https://github.com/fernacolo/familiar",
+    "license": "MIT",
+    "notes": [
+      "The familiar is installed.",
+      "If this is the first time, you have to open a new prompt to reflect PATH changes."
+    ]
+    "version": "0.1",
+    "url": "https://github.com/fernacolo/familiar/releases/download/v0.1/fam.exe",
+    "env_add_path": "."
+}
