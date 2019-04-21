@@ -54,6 +54,12 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="CommandLine\ArgumentScanner.cs" />
+    <Compile Include="CommandLine\CommandLineArgument.cs" />
+    <Compile Include="CommandLine\CommandLineOption.cs" />
+    <Compile Include="CommandLine\CommandLineOptionSpec.cs" />
+    <Compile Include="CommandLine\CommandLineParser.cs" />
+    <Compile Include="CommandLine\InvalidArgumentsException.cs" />
     <Compile Include="DataFiles\FilteredDataStore.cs" />
     <Compile Include="DataFiles\CachedDataStore.cs" />
     <Compile Include="DataFiles\DataCorruptionException.cs" />
@@ -63,6 +69,7 @@
     <Compile Include="DataFiles\NewOnTailDataStore.cs" />
     <Compile Include="DataFiles\MergedDataStore.cs" />
     <Compile Include="Diagnostics\DiagnosticsCenter.cs" />
+    <Compile Include="FamiliarCommandLineArguments.cs" />
     <Compile Include="Native\Ntdll.cs" />
     <Compile Include="Native\POINT.cs" />
     <Compile Include="Native\ShowWindowValue.cs" />

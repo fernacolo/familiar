@@ -26,6 +26,7 @@ namespace fam.UI
     public partial class MainWindow
     {
         private readonly TraceSource _trace;
+        private FamiliarCommandLineArguments _args;
         private readonly int _pid;
         private readonly string _machineName;
         private readonly Process _parentProcess;
@@ -39,13 +40,14 @@ namespace fam.UI
         private InboundReplication _inboundMonitor;
         private ReplicationJob _outboundMonitor;
 
-        public MainWindow( int parentPid, IntPtr targetWindow )
+        public MainWindow( FamiliarCommandLineArguments args, int parentPid, IntPtr targetWindow )
         {
             // Safe initializations. Do not put anything here that can throw an exception.
             // Defer to loaded.
 
             _trace = DiagnosticsCenter.GetTraceSource( nameof( MainWindow ) );
 
+            _args = args;
             _pid = parentPid;
             _machineName = Environment.MachineName;
 
@@ -89,7 +91,7 @@ namespace fam.UI
         private void Window_Loaded( object sender, RoutedEventArgs e )
         {
             _trace.TraceVerbose( "Reading configuration..." );
-            var config = Configuration.LoadDefault() ?? Configuration.CreateDefault();
+            var config = Configuration.LoadDefault( _args ) ?? Configuration.CreateDefault( _args );
 
             // TODO: Should be provided by config.
             var inboundFile = new FileInfo( Path.Combine( config.LocalDbDirectory.FullName, "inbound.dat" ) );
@@ -576,9 +578,11 @@ namespace fam.UI
 
     internal class ExitCodes
     {
+        public static readonly int Success = 0;
         public static readonly int ConsoleNotDetected = 1;
         public static readonly int PreviousInstanceDetected = 2;
         public static readonly int UserCanceledAttach = 3;
         public static readonly int TestFinished = 4;
+        public static readonly int InvalidArguments = 5;
     }
 }

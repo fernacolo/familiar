@@ -15,20 +15,11 @@ namespace fam.Sessions
 
         #region Static
 
-        private static FileInfo GetDefaultConfigFile()
+        private static FileInfo GetDefaultConfigFile( FamiliarCommandLineArguments args )
         {
             DirectoryInfo dbDirectory = null;
-            var args = Environment.GetCommandLineArgs();
-            const string flagName = "-databasedir:";
-            foreach ( var arg in args )
-            {
-                var lower = arg.ToLowerInvariant();
-                if ( lower.StartsWith( flagName ) )
-                {
-                    dbDirectory = new DirectoryInfo( arg.Substring( flagName.Length ) );
-                    break;
-                }
-            }
+            if ( args.Database != null )
+                dbDirectory = new DirectoryInfo( args.Database );
 
             if ( dbDirectory == null )
                 dbDirectory = DefaultDbDirectory;
@@ -63,9 +54,9 @@ namespace fam.Sessions
             return dbDir;
         }
 
-        public static Configuration LoadDefault()
+        public static Configuration LoadDefault( FamiliarCommandLineArguments args )
         {
-            var configFile = GetDefaultConfigFile();
+            var configFile = GetDefaultConfigFile( args );
             if ( !configFile.Exists )
                 return null;
 
@@ -90,7 +81,7 @@ namespace fam.Sessions
             return new Configuration( configData, configFile );
         }
 
-        public static Configuration CreateDefault()
+        public static Configuration CreateDefault( FamiliarCommandLineArguments args )
         {
             var hostName = Environment.MachineName;
             var userName = WindowsIdentity.GetCurrent().Name;
@@ -107,7 +98,7 @@ namespace fam.Sessions
                 WhenCreated = DateTime.Now
             };
 
-            var configFile = GetDefaultConfigFile();
+            var configFile = GetDefaultConfigFile( args );
 
             _trace.TraceInformation( "Writing configuration file: {0}", configFile );
 

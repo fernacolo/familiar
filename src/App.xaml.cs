@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows;
+using fam.CommandLine;
 using fam.DataFiles;
 using fam.Diagnostics;
 using fam.Native;
@@ -39,10 +40,88 @@ namespace fam
 
             _trace.TraceInformation( "{0}", message );
 
-            int parentPid;
-            var targetWindow = IntPtr.Zero;
+            try
+            {
+                var resolvedArgs = ParseCommandLine( args );
+                if ( resolvedArgs == null )
+                    return;
 
-            if ( args.Length > 1 && args[1] == "--select" )
+                if ( resolvedArgs.TestFile != null )
+                {
+                    ConsoleNeeded();
+                    PerformFileTest( resolvedArgs.TestFile );
+                    Current.Shutdown( ExitCodes.TestFinished );
+                    return;
+                }
+
+                if ( !SelectWindow( resolvedArgs, currentProcess, out var parentPid, out var targetWindow ) )
+                    return;
+
+                var mutexName = $"fam-{parentPid}";
+                _trace.TraceVerbose( "Creating mutex named {0}...", mutexName );
+
+                _mutex = new Mutex( false, mutexName, out var createdNew );
+                if ( !createdNew )
+                {
+                    _mutex.Dispose();
+                    _mutex = null;
+
+                    _trace.TraceWarning( "Unable to create mutex {0}. This process ({1}) will attempt to find a previous one attached to PID {2} and activate.", mutexName, currentPid, parentPid );
+
+                    BringCurrentToFront( parentPid, currentPid );
+                    Current.Shutdown( ExitCodes.PreviousInstanceDetected );
+                    return;
+                }
+
+                Current.ShutdownMode = ShutdownMode.OnMainWindowClose;
+                var mainWindow = new MainWindow( resolvedArgs, parentPid, targetWindow );
+                //Current.MainWindow = mainWindow;
+                _trace.TraceInformation( "Showing main window." );
+                mainWindow.Show();
+            }
+            catch ( Exception exception )
+            {
+                _trace.TraceError( "{0}", exception );
+                ConsoleNeeded();
+                Console.WriteLine( "{0}", exception );
+            }
+        }
+
+        private void BringCurrentToFront( int parentPid, int currentPid )
+        {
+            foreach ( var process in Process.GetProcessesByName( "fam" ) )
+            {
+                if ( process.Id == currentPid )
+                    continue;
+
+                var processParentPid = GetParentProcessId( process );
+                if ( processParentPid != parentPid )
+                {
+                    _trace.TraceInformation( "Found a previous process with PID {0}, but it does not appear to be attached to PID {1}. Ignoring...", process.Id, parentPid );
+                    continue;
+                }
+
+                _trace.TraceInformation( "Found a previous process with PID {0}. Getting windows...", process.Id );
+
+                var windows = GetProcessWindows( process.Id );
+                foreach ( var window in windows )
+                {
+                    _trace.TraceInformation( "Calling BringWindowToTop with HWND {0}.", window );
+                    User32.BringWindowToTop( window );
+                }
+
+                return;
+            }
+
+            ConsoleNeeded();
+            Console.Error.WriteLine( "Unable to start the familiar. Please check logs for details." );
+
+            _trace.TraceError( "Unable to find previous process." );
+        }
+
+        private bool SelectWindow( FamiliarCommandLineArguments resolvedArgs, Process currentProcess, out int parentPid, out IntPtr targetWindow )
+        {
+            if ( resolvedArgs.SelectWindow )
             {
                 var attachSelector = new AttachSelector();
                 attachSelector.ShowDialog();
@@ -53,16 +132,11 @@ namespace fam
                 if ( parentPid == 0 )
                 {
                     Current.Shutdown( ExitCodes.UserCanceledAttach );
-                    return;
+                    return false;
                 }
             }
             else
             {
-                //var logFileName = Path.Combine( config.LocalDbDirectory.FullName, $"log-{DateTime.Now:yyyy-MM-dd,HHmm}.txt" );
-                //_trace.TraceInformation( "Log file: {0}", logFileName );
-                //var stream = new FileStream( logFileName, FileMode.Append, FileAccess.Write, FileShare.Read | FileShare.Delete, 1, false );
-                //LogViewTraceListener.Actual = new TextWriterTraceListener( stream );
-
                 parentPid = GetParentProcessId( currentProcess );
 
                 var attached = Kernel32.AttachConsole( (uint) parentPid );
@@ -74,96 +148,189 @@ namespace fam
                     _trace.TraceWarning( "No console window detected." );
                     MessageBox.Show( "Console not detected.\r\nPlease, start the familiar from Command Prompt.", "Familiar Notification", MessageBoxButton.OK, MessageBoxImage.Information );
                     Current.Shutdown( ExitCodes.ConsoleNotDetected );
-                    return;
-                }
-
-                if ( args.Length > 2 && args[1] == "--readforward" )
-                {
-                    var fileToRead = new FileInfo( args[2] );
-                    var file = new FileStore( fileToRead );
-                    var current = file.Bof;
-                    var count = 0;
-                    for ( ;; )
-                    {
-                        current = file.GetNext( current );
-                        if ( current == file.Eof )
-                            break;
-                        ++count;
-                    }
-
-                    Console.WriteLine( "Read finished. Found {0} records.", count );
-                    Current.Shutdown( ExitCodes.TestFinished );
-                    return;
-                }
-
-                if ( args.Length > 2 && args[1] == "--readbackward" )
-                {
-                    var fileToRead = new FileInfo( args[2] );
-                    var file = new FileStore( fileToRead );
-                    var current = file.Eof;
-                    var count = 0;
-                    for ( ;; )
-                    {
-                        current = file.GetPrevious( current );
-                        if ( current == file.Bof )
-                            break;
-                        ++count;
-                    }
-
-                    Console.WriteLine( "Read finished. Found {0} records.", count );
-                    Current.Shutdown( ExitCodes.TestFinished );
-                    return;
+                    return false;
                 }
             }
 
-            var mutexName = $"fam-{parentPid}";
-            _trace.TraceVerbose( "Creating mutex named {0}...", mutexName );
+            return true;
+        }
 
-            _mutex = new Mutex( false, mutexName, out var createdNew );
-            if ( !createdNew )
+        private static void PerformFileTest( string fileToTest )
+        {
+            var fileToRead = new FileInfo( fileToTest );
+            var file = new FileStore( fileToRead );
+
+            var current = file.Bof;
+            var count = 0;
+            for ( ;; )
             {
-                _mutex.Dispose();
-                _mutex = null;
-
-                _trace.TraceWarning( "Unable to create mutex {0}. This process ({1}) will attempt to find a previous one attached to PID {2} and activate.", mutexName, currentPid, parentPid );
-
-                foreach ( var process in Process.GetProcessesByName( "fam" ) )
-                {
-                    if ( process.Id == currentPid )
-                        continue;
-
-                    var processParentPid = GetParentProcessId( process );
-                    if ( processParentPid != parentPid )
-                    {
-                        _trace.TraceInformation( "Found a previous process with PID {0}, but it does not appear to be attached to PID {1}. Ignoring...", process.Id, parentPid );
-                        continue;
-                    }
-
-                    _trace.TraceInformation( "Found a previous process with PID {0}. Getting windows...", process.Id );
-
-                    var windows = GetProcessWindows( process.Id );
-                    foreach ( var window in windows )
-                    {
-                        _trace.TraceInformation( "Calling BringWindowToTop with HWND {0}.", window );
-                        User32.BringWindowToTop( window );
-                    }
-
-                    Current.Shutdown( ExitCodes.PreviousInstanceDetected );
-                    return;
-                }
-
-                Console.Error.WriteLine( "Unable to start the familiar. Please check logs for details." );
-
-                _trace.TraceError( "Unable to find previous process." );
-                Current.Shutdown( ExitCodes.PreviousInstanceDetected );
-                return;
+                current = file.GetNext( current );
+                if ( current == file.Eof )
+                    break;
+                ++count;
             }
 
-            Current.ShutdownMode = ShutdownMode.OnMainWindowClose;
-            var mainWindow = new MainWindow( parentPid, targetWindow );
-            //Current.MainWindow = mainWindow;
-            _trace.TraceInformation( "Showing main window." );
-            mainWindow.Show();
+            Console.WriteLine( "Forward read finished. Found {0} records.", count );
+
+            file = new FileStore( fileToRead );
+            current = file.Eof;
+            count = 0;
+            for ( ;; )
+            {
+                current = file.GetPrevious( current );
+                if ( current == file.Bof )
+                    break;
+                ++count;
+            }
+
+            Console.WriteLine( "Backward read finished. Found {0} records.", count );
+        }
+
+        private FamiliarCommandLineArguments ParseCommandLine( string[] args )
+        {
+            var options = CreateCommandLineOptions();
+            var commandLineParser = new CommandLineParser( options );
+            FamiliarCommandLineArguments resolvedArgs;
+            try
+            {
+                var parsedArgs = commandLineParser.Parse( args );
+                resolvedArgs = ResolveArguments( parsedArgs );
+            }
+            catch ( InvalidArgumentsException ex )
+            {
+                ConsoleNeeded();
+                _trace.TraceError( "{0}", ex );
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine( ex.Message );
+                Console.ResetColor();
+                Console.WriteLine( $"For help, use {_helpOpt.Description}." );
+                Current.Shutdown( ExitCodes.InvalidArguments );
+                return null;
+            }
+
+            _trace.TraceInformation( "Parameters parsed." );
+
+            if ( resolvedArgs.ShowHelp )
+            {
+                ConsoleNeeded();
+                ShowHelp( options );
+                Current.Shutdown( ExitCodes.Success );
+                return null;
+            }
+
+            return resolvedArgs;
+        }
+
+        private void ConsoleNeeded()
+        {
+            if ( Kernel32.GetConsoleWindow() != IntPtr.Zero )
+                return;
+
+            var parentPid = GetParentProcessId( Process.GetCurrentProcess() );
+            Kernel32.AttachConsole( (uint) parentPid );
+            if ( Kernel32.GetConsoleWindow() == IntPtr.Zero )
+                Kernel32.AllocConsole();
+        }
+
+        private static void ShowHelp( IReadOnlyList<CommandLineOption> options )
+        {
+            Console.WriteLine();
+            Console.WriteLine( "The best companion for the command line adventurer." );
+            Console.WriteLine();
+
+            var flagColumnsSize = CommandLineOption.ComputeFlagsColumnSize( options );
+            const string indent = "  ";
+            const int lineLength = 120;
+            foreach ( var option in options )
+                option.Write( Console.Out, indent, flagColumnsSize, lineLength );
+
+            Console.WriteLine();
+        }
+
+        private CommandLineOption _testFileOpt;
+        private CommandLineOption _connectOpt;
+        private CommandLineOption _helpOpt;
+        private CommandLineOption _verboseOpt;
+        private CommandLineOption _selectOpt;
+        private CommandLineOption _databaseOpt;
+
+        private IReadOnlyList<CommandLineOption> CreateCommandLineOptions()
+        {
+            _testFileOpt = new CommandLineOption( new CommandLineOptionSpec
+            {
+                LongName = "test-file",
+                HasValue = true,
+                Help = "Reads the specified file, searching for corrupted regions.",
+                ValueHelp = "file-to-test"
+            } );
+
+            _connectOpt = new CommandLineOption( new CommandLineOptionSpec
+            {
+                LongName = "connect",
+                HasValue = true,
+                Help = "Connect to specified shared directory, giving access to commands typed in multiple machines.",
+                ValueHelp = "shared-directory"
+            } );
+
+            _helpOpt = new CommandLineOption( new CommandLineOptionSpec
+            {
+                LongName = "help",
+                ShortName = 'h',
+                Help = "Shows command line help.",
+            } );
+
+            _verboseOpt = new CommandLineOption( new CommandLineOptionSpec
+            {
+                LongName = "verbose",
+                ShortName = 'v',
+                Help = "Enable verbose logs.",
+            } );
+
+            _selectOpt = new CommandLineOption( new CommandLineOptionSpec
+            {
+                LongName = "select",
+                Help = "Instead of connecting to current prompt, allows selecting a window (alpha).",
+            } );
+
+            _databaseOpt = new CommandLineOption( new CommandLineOptionSpec
+            {
+                LongName = "database",
+                HasValue = true,
+                Help = "Use the specified database directory instead of default.",
+                ValueHelp = "data-dir"
+            } );
+
+            return new[]
+            {
+                _testFileOpt,
+                _selectOpt,
+                _databaseOpt,
+                _connectOpt,
+                _verboseOpt,
+                _helpOpt
+            };
+        }
+
+        private FamiliarCommandLineArguments ResolveArguments( CommandLineArgument[] parsedArgs )
+        {
+            var result = new FamiliarCommandLineArguments();
+
+            if ( parsedArgs.Length == 0 )
+                return result;
+
+            CommandLineOption.ValidateMutuallyExclusive( parsedArgs, _testFileOpt, _connectOpt, _helpOpt );
+            _testFileOpt.ValidateThisForbidsOthers( parsedArgs, _selectOpt, _databaseOpt );
+            _connectOpt.ValidateThisForbidsOthers( parsedArgs, _selectOpt, _databaseOpt );
+            _helpOpt.ValidateThisForbidsOthers( parsedArgs, _selectOpt, _databaseOpt );
+
+            result.Verbose = _verboseOpt.ExtractOrNull( parsedArgs ) != null;
+            result.ShowHelp = _helpOpt.ExtractOrNull( parsedArgs ) != null;
+            result.TestFile = _testFileOpt.ExtractOrNull( parsedArgs )?.Value;
+            result.Connect = _connectOpt.ExtractOrNull( parsedArgs )?.Value;
+            result.SelectWindow = _selectOpt.ExtractOrNull( parsedArgs ) != null;
+            result.Database = _databaseOpt.ExtractOrNull( parsedArgs )?.Value;
+
+            return result;
         }
 
         private int GetParentProcessId( Process process )
