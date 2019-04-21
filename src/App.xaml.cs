@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -10,6 +11,7 @@ using fam.CommandLine;
 using fam.DataFiles;
 using fam.Diagnostics;
 using fam.Native;
+using fam.Sessions;
 using fam.UI;
 
 namespace fam
@@ -48,9 +50,25 @@ namespace fam
 
                 if ( resolvedArgs.TestFile != null )
                 {
-                    ConsoleNeeded();
+                    ConsoleNeeded( true );
                     PerformFileTest( resolvedArgs.TestFile );
-                    Current.Shutdown( ExitCodes.TestFinished );
+                    Current.Shutdown( ExitCodes.Success );
+                    return;
+                }
+
+                if ( resolvedArgs.ShowInfo )
+                {
+                    ConsoleNeeded();
+                    ShowInformation( resolvedArgs );
+                    Current.Shutdown( ExitCodes.Success );
+                    return;
+                }
+
+                if ( resolvedArgs.Connect != null )
+                {
+                    ConsoleNeeded( true );
+                    ConnectToSharedDir( resolvedArgs );
+                    Current.Shutdown( ExitCodes.Success );
                     return;
                 }
 
@@ -81,9 +99,8 @@ namespace fam
             }
             catch ( Exception exception )
             {
+                ConsoleNeeded( true );
                 _trace.TraceError( "{0}", exception );
-                ConsoleNeeded();
-                Console.WriteLine( "{0}", exception );
             }
         }
 
@@ -114,7 +131,7 @@ namespace fam
             }
 
             ConsoleNeeded();
-            Console.Error.WriteLine( "Unable to start the familiar. Please check logs for details." );
+            Terminal.WriteLine( "Unable to start the familiar. Please check logs for details." );
 
             _trace.TraceError( "Unable to find previous process." );
         }
@@ -170,7 +187,7 @@ namespace fam
                 ++count;
             }
 
-            Console.WriteLine( "Forward read finished. Found {0} records.", count );
+            Terminal.WriteLine( "Forward read finished. Found {0} records.", count );
 
             file = new FileStore( fileToRead );
             current = file.Eof;
@@ -183,7 +200,77 @@ namespace fam
                 ++count;
             }
 
-            Console.WriteLine( "Backward read finished. Found {0} records.", count );
+            Terminal.WriteLine( "Backward read finished. Found {0} records.", count );
+        }
+
+        private void ShowInformation( FamiliarCommandLineArguments args )
+        {
+            var config = Configuration.LoadDefault( args );
+            if ( config == null )
+            {
+                Terminal.WriteLine( "There is no active configuration." );
+                return;
+            }
+
+            Terminal.WriteLine( "Configuration file: {0}", config.ConfigFile.FullName );
+            Terminal.WriteLine( "Local data directory: {0}", config.LocalDbDirectory?.FullName ?? "not set" );
+            Terminal.WriteLine( "Shared data directory: {0}", config.SharedDirectory?.FullName ?? "not set" );
+            Terminal.WriteLine( "Session id: {0}", config.SessionId );
+            Terminal.WriteLine();
+        }
+
+        private void ConnectToSharedDir( FamiliarCommandLineArguments args )
+        {
+            var newSharedDir = new DirectoryInfo( Path.Combine( args.Connect, "familiar" ) );
+
+            var config = Configuration.LoadDefault( args );
+            if ( config == null )
+                config = Configuration.CreateDefault( args );
+
+            if ( config.SharedDirectory != null )
+            {
+                Terminal.WriteLine( "Will change: {0}", config.SharedDirectory.FullName );
+                Terminal.WriteLine( "         To: {0}", newSharedDir.FullName );
+            }
+            else
+            {
+                Terminal.WriteLine( "New shared directory: {0}", newSharedDir.FullName );
+            }
+
+            if ( !newSharedDir.Exists )
+            {
+                Terminal.WriteLine( "Directory does not exist. Please create if you want to use that." );
+                return;
+            }
+
+            var configFile = config.ConfigFile;
+
+            ConfigurationData configData;
+            using ( var stream = new FileStream( configFile.FullName, FileMode.Open ) )
+            {
+                configData = Serializer.LoadFromStream<ConfigurationData>( stream );
+            }
+
+            configData.SharedFolder = newSharedDir.FullName;
+
+            using ( var stream = new FileStream( configFile.FullName, FileMode.Create ) )
+            {
+                Serializer.SaveToStream( stream, configData );
+            }
+
+            var localStore = new FileStore( config );
+            var myDataFile = localStore.FileName;
+
+            var replication = new InboundReplication(
+                newSharedDir,
+                config.LocalDbDirectory,
+                TimeSpan.Zero,
+                ( fileName ) => !string.Equals( myDataFile, fileName, StringComparison.OrdinalIgnoreCase )
+            );
+
+            replication.RunOnce();
+
+            Terminal.WriteLine( "Done." );
         }
 
         private FamiliarCommandLineArguments ParseCommandLine( string[] args )
@@ -198,15 +285,16 @@ namespace fam
             }
             catch ( InvalidArgumentsException ex )
             {
-                ConsoleNeeded();
                 _trace.TraceError( "{0}", ex );
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine( ex.Message );
-                Console.ResetColor();
-                Console.WriteLine( $"For help, use {_helpOpt.Description}." );
+                ConsoleNeeded();
+                Terminal.WriteLine( ex.Message );
+                Terminal.WriteLine( $"For help, use {_helpOpt.Description}." );
                 Current.Shutdown( ExitCodes.InvalidArguments );
                 return null;
             }
+
+            if ( resolvedArgs.Verbose )
+                LogViewTraceListener.MaxLevel = TraceEventType.Verbose;
 
             _trace.TraceInformation( "Parameters parsed." );
 
@@ -221,34 +309,43 @@ namespace fam
             return resolvedArgs;
         }
 
-        private void ConsoleNeeded()
+        private void ConsoleNeeded( bool redirectLogs = false )
         {
-            if ( Kernel32.GetConsoleWindow() != IntPtr.Zero )
-                return;
+            if ( redirectLogs )
+            {
+                var listener = new OutputTraceListener();
+                listener.Other = LogViewTraceListener.Actual;
+                LogViewTraceListener.Actual = listener;
+            }
 
-            var parentPid = GetParentProcessId( Process.GetCurrentProcess() );
-            Kernel32.AttachConsole( (uint) parentPid );
             if ( Kernel32.GetConsoleWindow() == IntPtr.Zero )
-                Kernel32.AllocConsole();
+            {
+                var parentPid = GetParentProcessId( Process.GetCurrentProcess() );
+                Kernel32.AttachConsole( (uint) parentPid );
+                if ( Kernel32.GetConsoleWindow() == IntPtr.Zero )
+                    Kernel32.AllocConsole();
+            }
+
+            Terminal.WriteLine();
         }
 
         private static void ShowHelp( IReadOnlyList<CommandLineOption> options )
         {
-            Console.WriteLine();
-            Console.WriteLine( "The best companion for the command line adventurer." );
-            Console.WriteLine();
+            Terminal.WriteLine( "The best companion for the command line adventurer." );
+            Terminal.WriteLine();
 
             var flagColumnsSize = CommandLineOption.ComputeFlagsColumnSize( options );
             const string indent = "  ";
             const int lineLength = 120;
             foreach ( var option in options )
-                option.Write( Console.Out, indent, flagColumnsSize, lineLength );
+                option.Write( indent, flagColumnsSize, lineLength );
 
-            Console.WriteLine();
+            Terminal.WriteLine();
         }
 
         private CommandLineOption _testFileOpt;
         private CommandLineOption _connectOpt;
+        private CommandLineOption _infoOpt;
         private CommandLineOption _helpOpt;
         private CommandLineOption _verboseOpt;
         private CommandLineOption _selectOpt;
@@ -260,7 +357,7 @@ namespace fam
             {
                 LongName = "test-file",
                 HasValue = true,
-                Help = "Reads the specified file, searching for corrupted regions.",
+                Help = "Read the specified file, searching for corrupted regions.",
                 ValueHelp = "file-to-test"
             } );
 
@@ -270,6 +367,12 @@ namespace fam
                 HasValue = true,
                 Help = "Connect to specified shared directory, giving access to commands typed in multiple machines.",
                 ValueHelp = "shared-directory"
+            } );
+
+            _infoOpt = new CommandLineOption( new CommandLineOptionSpec
+            {
+                LongName = "info",
+                Help = "Prints some internal information.",
             } );
 
             _helpOpt = new CommandLineOption( new CommandLineOptionSpec
@@ -283,7 +386,7 @@ namespace fam
             {
                 LongName = "verbose",
                 ShortName = 'v',
-                Help = "Enable verbose logs.",
+                Help = "Enable verbose logs. To view logs, type: eventvwr /c:familiar",
             } );
 
             _selectOpt = new CommandLineOption( new CommandLineOptionSpec
@@ -306,6 +409,7 @@ namespace fam
                 _selectOpt,
                 _databaseOpt,
                 _connectOpt,
+                _infoOpt,
                 _verboseOpt,
                 _helpOpt
             };
@@ -318,15 +422,17 @@ namespace fam
             if ( parsedArgs.Length == 0 )
                 return result;
 
-            CommandLineOption.ValidateMutuallyExclusive( parsedArgs, _testFileOpt, _connectOpt, _helpOpt );
+            CommandLineOption.ValidateMutuallyExclusive( parsedArgs, _testFileOpt, _connectOpt, _infoOpt, _helpOpt );
             _testFileOpt.ValidateThisForbidsOthers( parsedArgs, _selectOpt, _databaseOpt );
-            _connectOpt.ValidateThisForbidsOthers( parsedArgs, _selectOpt, _databaseOpt );
+            _connectOpt.ValidateThisForbidsOthers( parsedArgs, _selectOpt );
+            _infoOpt.ValidateThisForbidsOthers( parsedArgs, _selectOpt );
             _helpOpt.ValidateThisForbidsOthers( parsedArgs, _selectOpt, _databaseOpt );
 
             result.Verbose = _verboseOpt.ExtractOrNull( parsedArgs ) != null;
             result.ShowHelp = _helpOpt.ExtractOrNull( parsedArgs ) != null;
             result.TestFile = _testFileOpt.ExtractOrNull( parsedArgs )?.Value;
             result.Connect = _connectOpt.ExtractOrNull( parsedArgs )?.Value;
+            result.ShowInfo = _infoOpt.ExtractOrNull( parsedArgs ) != null;
             result.SelectWindow = _selectOpt.ExtractOrNull( parsedArgs ) != null;
             result.Database = _databaseOpt.ExtractOrNull( parsedArgs )?.Value;
 
@@ -367,6 +473,30 @@ namespace fam
             _trace?.TraceInformation( "Exiting with code {0}.", e.ApplicationExitCode );
             _mutex?.Dispose();
             _mutex = null;
+        }
+    }
+
+    internal static class Terminal
+    {
+        public static void WriteLine()
+        {
+            Write( "\r\n" );
+        }
+
+        public static void WriteLine( string message, params object[] args )
+        {
+            if ( args == null || args.Length == 0 )
+                Write( message );
+            else
+                Write( string.Format( CultureInfo.InvariantCulture, message, args ) );
+            WriteLine();
+        }
+
+        public static void Write( string s )
+        {
+            var hConsoleOutput = Kernel32.GetStdHandle( Kernel32.STD_OUTPUT_HANDLE );
+            uint written = 0;
+            Kernel32.WriteConsole( hConsoleOutput, s, (uint) s.Length, ref written, IntPtr.Zero );
         }
     }
 }

@@ -13,6 +13,10 @@ namespace fam.DataFiles
         private readonly TraceSource _trace;
         private readonly DirectoryInfo _source;
         private readonly DirectoryInfo _destination;
+        private readonly Random _random;
+        private readonly ReplicationState _state;
+        private readonly string _mutexName;
+        private readonly Mutex _mutex;
         private readonly Thread _thread;
         private readonly TimeSpan _timeBetweenPolls;
         private readonly Func<string, bool> _accept;
@@ -22,6 +26,11 @@ namespace fam.DataFiles
             _trace = DiagnosticsCenter.GetTraceSource( nameof( InboundReplication ) );
             _source = source;
             _destination = destination;
+            _random = new Random();
+            _state = new ReplicationState( _trace, _destination );
+            var escapedName = _destination.FullName.Replace( ":\\", "\\" ).Replace( '\\', '/' );
+            _mutexName = $"familiar/replication/{escapedName}";
+            _mutex = new Mutex( false, _mutexName );
             _thread = new Thread( Run );
             _thread.IsBackground = true;
             _thread.Priority = ThreadPriority.Lowest;
@@ -38,66 +47,11 @@ namespace fam.DataFiles
         {
             try
             {
-                var random = new Random();
-                var escapedName = _destination.FullName.Replace( ":\\", "\\" ).Replace( '\\', '/' );
-                var mutexName = $"familiar/replication/{escapedName}";
-                //        Mutex mutex;
-                //          Mutex.TryOpenExisting( mutexName, out mutex );
-                //            if (mutex == null)
-                var mutex = new Mutex( false, mutexName );
                 for ( ;; )
                 {
-                    var state = new ReplicationState( _trace, _destination );
+                    RunOnce( false );
 
-                    _trace.TraceVerbose( "Attempting to lock {0}...", mutexName );
-                    mutex.WaitOne();
-                    try
-                    {
-                        _trace.TraceVerbose( "Acquired lock on {0}.", mutexName );
-
-                        if ( state.AgeOfLastChange > _timeBetweenPolls )
-                        {
-                            state.Read();
-
-                            var sourceFiles = new List<FileInfo>();
-                            foreach ( var sourceFile in _source.GetFiles( "*.dat" ) )
-                            {
-                                if ( !_accept( sourceFile.Name ) )
-                                    continue;
-                                _trace.TraceVerbose( "Found file to replicate: {0}", sourceFile.FullName );
-                                sourceFiles.Add( sourceFile );
-                            }
-
-                            IDataStore target = null;
-
-                            while ( sourceFiles.Count > 0 )
-                            {
-                                var index = random.Next( sourceFiles.Count );
-                                var sourceFile = sourceFiles[index];
-                                sourceFiles.RemoveAt( index );
-
-                                var fileState = state.GetOrCreateFileState( sourceFile.Name );
-                                Replicate( sourceFile, fileState, ref target );
-                                if ( fileState.Changed )
-                                    state.Write();
-                            }
-                        }
-                        else
-                        {
-                            _trace.TraceVerbose( "Replication not needed at this time." );
-                        }
-                    }
-                    catch ( Exception ex )
-                    {
-                        _trace.TraceError( "{0}", ex );
-                    }
-                    finally
-                    {
-                        mutex.ReleaseMutex();
-                    }
-
-                    _trace.TraceVerbose( "Released lock on {0}. Sleeping for {1} seconds before next poll.", mutexName, _timeBetweenPolls.TotalSeconds );
-
+                    _trace.TraceInformation( "Sleeping for {0} seconds before next poll.", _timeBetweenPolls.TotalSeconds );
                     Thread.Sleep( _timeBetweenPolls );
                 }
             }
@@ -105,6 +59,58 @@ namespace fam.DataFiles
             {
                 _trace.TraceError( "{0}", ex );
             }
+        }
+
+        public void RunOnce( bool force = true )
+        {
+            _trace.TraceVerbose( "Attempting to lock {0}...", _mutexName );
+            _mutex.WaitOne();
+            try
+            {
+                _trace.TraceVerbose( "Acquired lock on {0}.", _mutexName );
+
+                if ( force || _state.AgeOfLastChange > _timeBetweenPolls )
+                {
+                    _state.Read();
+
+                    var sourceFiles = new List<FileInfo>();
+                    foreach ( var sourceFile in _source.GetFiles( "*.dat" ) )
+                    {
+                        if ( !_accept( sourceFile.Name ) )
+                            continue;
+                        _trace.TraceInformation( "Found file to import: {0}", sourceFile.FullName );
+                        sourceFiles.Add( sourceFile );
+                    }
+
+                    IDataStore target = null;
+
+                    while ( sourceFiles.Count > 0 )
+                    {
+                        var index = _random.Next( sourceFiles.Count );
+                        var sourceFile = sourceFiles[index];
+                        sourceFiles.RemoveAt( index );
+
+                        var fileState = _state.GetOrCreateFileState( sourceFile.Name );
+                        Replicate( sourceFile, fileState, ref target );
+                        if ( fileState.Changed )
+                            _state.Write();
+                    }
+                }
+                else
+                {
+                    _trace.TraceVerbose( "Replication not needed at this time." );
+                }
+            }
+            catch ( Exception ex )
+            {
+                _trace.TraceError( "{0}", ex );
+            }
+            finally
+            {
+                _mutex.ReleaseMutex();
+            }
+
+            _trace.TraceVerbose( "Released lock on {0}.", _mutexName, _timeBetweenPolls.TotalSeconds );
         }
 
         private void Replicate( FileInfo sourceFile, FileReplicationState state, ref IDataStore target )
@@ -124,7 +130,7 @@ namespace fam.DataFiles
 
                 if ( changeDetected == false )
                 {
-                    _trace.TraceInformation( "Changes detected at {0}.", sourceFile.FullName );
+                    _trace.TraceInformation( "Changes detected at {0}. Importing...", sourceFile.FullName );
                     changeDetected = true;
                 }
 

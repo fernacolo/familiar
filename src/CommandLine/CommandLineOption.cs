@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -68,7 +67,7 @@ namespace fam.CommandLine
 
         public CommandLineArgument GetFirst( CommandLineArgument[] parsedArgs )
         {
-            var result = GetFirst( parsedArgs );
+            var result = GetFirstOrNull( parsedArgs );
             if ( result == null )
                 throw new InvalidOperationException( $"Option {Description} was not found in the parsed arguments." );
 
@@ -212,33 +211,33 @@ namespace fam.CommandLine
             return sb.ToString();
         }
 
-        public void Write( TextWriter output, string indent, int flagColumnsSize, int lineSize )
+        public void Write( string indent, int flagColumnsSize, int lineSize )
         {
             var beforeHelp = $"{indent}{GetFlagsHelp( flagColumnsSize )}";
             if ( (beforeHelp.Length + Help.Length) <= lineSize )
             {
-                output.Write( beforeHelp );
-                output.WriteLine( Help );
+                Terminal.Write( beforeHelp );
+                Terminal.WriteLine( Help );
                 return;
             }
 
             var helpLines = WordWrap( Help, lineSize - beforeHelp.Length );
             if ( helpLines == null || helpLines.Count < 2 )
             {
-                output.Write( beforeHelp );
-                output.WriteLine( Help );
+                Terminal.Write( beforeHelp );
+                Terminal.WriteLine( Help );
                 return;
             }
 
-            output.Write( beforeHelp );
-            output.WriteLine( helpLines[0] );
+            Terminal.Write( beforeHelp );
+            Terminal.WriteLine( helpLines[0] );
 
             var beforeHelpIndent = new string( ' ', beforeHelp.Length );
 
             for ( var i = 1; i < helpLines.Count; ++i )
             {
-                output.Write( beforeHelpIndent );
-                output.WriteLine( helpLines[i] );
+                Terminal.Write( beforeHelpIndent );
+                Terminal.WriteLine( helpLines[i] );
             }
         }
 

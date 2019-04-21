@@ -582,7 +582,6 @@ namespace fam.UI
         public static readonly int ConsoleNotDetected = 1;
         public static readonly int PreviousInstanceDetected = 2;
         public static readonly int UserCanceledAttach = 3;
-        public static readonly int TestFinished = 4;
-        public static readonly int InvalidArguments = 5;
+        public static readonly int InvalidArguments = 4;
     }
 }

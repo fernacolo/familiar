@@ -54,6 +54,15 @@ namespace fam.Diagnostics
             }
         }
 
+        private static int _maxLevel = (int) TraceEventType.Information;
+
+        public static TraceEventType MaxLevel
+        {
+            get => (TraceEventType) Interlocked.CompareExchange( ref _maxLevel, 0, 0 );
+
+            set => Interlocked.Exchange( ref _maxLevel, (int) value );
+        }
+
         public override void Write( string message )
         {
             throw new InvalidOperationException();
@@ -83,6 +92,8 @@ namespace fam.Diagnostics
         {
             try
             {
+                if ( eventType > MaxLevel )
+                    return;
                 Actual.TraceEvent( eventCache, source, eventType, id, message );
                 Actual.Flush();
             }
@@ -97,6 +108,8 @@ namespace fam.Diagnostics
         {
             try
             {
+                if ( eventType > MaxLevel )
+                    return;
                 Actual.TraceEvent( eventCache, source, eventType, id, format, args );
                 Actual.Flush();
             }
@@ -139,7 +152,36 @@ namespace fam.Diagnostics
         }
     }
 
-    internal class WindowsApplicationEventTraceListener : TraceListener
+    internal sealed class OutputTraceListener : TraceListener
+    {
+        public TraceListener Other { get; set; }
+
+        public override void Write( string message )
+        {
+            Other?.Write( message );
+        }
+
+        public override void WriteLine( string message )
+        {
+            Other?.WriteLine( message );
+        }
+
+        public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string message )
+        {
+            Terminal.WriteLine( "[{0}] {1}: {2}", source, eventType, message );
+            Other?.TraceEvent( eventCache, source, eventType, id, message );
+        }
+
+        public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string format, params object[] args )
+        {
+            var message = format;
+            if ( args != null && args.Length > 0 )
+                message = string.Format( CultureInfo.InvariantCulture, format, args );
+            TraceEvent( eventCache, source, eventType, id, message );
+        }
+    }
+
+    internal sealed class WindowsApplicationEventTraceListener : TraceListener
     {
         private readonly ConcurrentDictionary<string, EventLog> _cache = new ConcurrentDictionary<string, EventLog>();
 
@@ -155,8 +197,6 @@ namespace fam.Diagnostics
 
         public override void TraceEvent( TraceEventCache eventCache, string source, TraceEventType eventType, int id, string message )
         {
-            if ( eventType > TraceEventType.Information )
-                return;
             var eventLog = _cache.GetOrAdd( source, CreateEventLog );
             eventLog.WriteEntry( message ?? "(no message)", ToEntryType( eventType ), id );
         }

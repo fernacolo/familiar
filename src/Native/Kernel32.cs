@@ -163,5 +163,14 @@ private const uint FILE_ATTRIBUTE_ENCRYPTED       = 0x00004000;
             uint nLength,
             out uint lpNumberOfEventsWritten
         );
+
+        [DllImport( "kernel32", EntryPoint = "WriteConsoleW", CharSet = CharSet.Unicode, SetLastError = true )]
+        internal static extern bool WriteConsole(
+            IntPtr hConsoleOutput,
+            string lpBuffer,
+            uint nNumberOfCharsToWrite,
+            ref uint lpNumberOfCharsWritten,
+            IntPtr lpReserved
+        );
     }
 }
