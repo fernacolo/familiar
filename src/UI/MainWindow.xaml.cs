@@ -39,6 +39,8 @@ namespace fam.UI
         private Searcher _searcher;
         private InboundReplication _inboundMonitor;
         private ReplicationJob _outboundMonitor;
+        private long _lastChange;
+        private bool _activateWithConsole;
 
         public MainWindow( FamiliarCommandLineArguments args, int parentPid, IntPtr targetWindow )
         {
@@ -166,21 +168,21 @@ namespace fam.UI
             {
                 // Last time we detected a change in console position.
                 // Initialize with now to update immediately.
-                var lastChange = DateTimeOffset.UtcNow.Ticks;
+                _lastChange = DateTimeOffset.UtcNow.Ticks;
 
                 // If there is no change in this time, we consider idle. Use large value to avoid burning user's CPU and battery.
-                var idleTime = TimeSpan.FromMilliseconds( 400 );
+                var idleTime = TimeSpan.FromMilliseconds( 500 );
 
                 // If there is no change in this time, we consider "possibly idle". Use smaller than idle time to be responsive.
                 var possiblyIdleTime = TimeSpan.FromMilliseconds( 100 );
 
                 // A flag that tells we need to activate ourselves when the console gets activated.
-                var activateWithConsole = false;
+                _activateWithConsole = false;
 
                 while ( true )
                 {
                     var now = DateTimeOffset.UtcNow.Ticks;
-                    var timeSinceLastChange = TimeSpan.FromTicks( now - Interlocked.Add( ref lastChange, 0 ) );
+                    var timeSinceLastChange = TimeSpan.FromTicks( now - Interlocked.Add( ref _lastChange, 0 ) );
 
                     if ( timeSinceLastChange >= idleTime )
                     {
@@ -202,92 +204,7 @@ namespace fam.UI
 
                     //_trace.TraceInformation( "Updating tool window position..." );
 
-                    Dispatcher.Invoke(
-                        () =>
-                        {
-                            var changeTime = DateTimeOffset.UtcNow.Ticks;
-
-                            // If the console is iconic, iconize ourselves.
-                            if ( User32.IsIconic( _targetWindow ) )
-                            {
-                                WindowState = WindowState.Minimized;
-                                Interlocked.Exchange( ref lastChange, changeTime );
-                                return;
-                            }
-
-                            if ( !User32.GetWindowRect( _targetWindow, out var rect ) )
-                            {
-                                _trace.TraceError( "Unable to determine window position." );
-                                return;
-                            }
-
-                            var interopHelper = new WindowInteropHelper( this );
-                            User32.GetWindowRect( interopHelper.Handle, out var ourRect );
-
-                            var windowPlacement = new WINDOWPLACEMENT();
-                            if ( !User32.GetWindowPlacement( _targetWindow, ref windowPlacement ) )
-                            {
-                                _trace.TraceError( "Unable to determine window placement. Smart-maximization is not supported." );
-                            }
-                            else
-                            {
-                                if ( windowPlacement.showCmd == ShowWindowValue.SW_MAXIMIZE )
-                                {
-                                    _trace.TraceVerbose( "Maximization detected; will try to smart-maximize." );
-                                    User32.ShowWindow( _targetWindow, ShowWindowValue.SW_RESTORE );
-                                    if ( !WaitForRestore( _targetWindow, TimeSpan.FromMilliseconds( 500 ) ) )
-                                    {
-                                        _trace.TraceError( "Unable to restore target window; smart-maximize failed." );
-                                        return;
-                                    }
-
-                                    User32.MoveWindow( _targetWindow, rect.X, rect.Y, rect.Width, rect.Height - ourRect.Height, true );
-                                    Interlocked.Exchange( ref lastChange, changeTime );
-                                    return;
-                                }
-                            }
-
-                            // Otherwise get out of iconic state.
-                            if ( WindowState != WindowState.Normal )
-                            {
-                                WindowState = WindowState.Normal;
-                                Interlocked.Exchange( ref lastChange, changeTime );
-                            }
-
-                            var newTop = rect.Bottom + 1;
-                            if ( ourRect.Left != rect.Left || ourRect.Top != newTop || ourRect.Right != rect.Right )
-                            {
-                                // Using Win32 to move because it works regardless of DPI settings.
-                                User32.MoveWindow( interopHelper.Handle, rect.X, newTop, rect.Width, ourRect.Height, true );
-                                Interlocked.Exchange( ref lastChange, changeTime );
-                            }
-
-                            // If we are active, we know that the console is not. This is a final state.
-                            if ( IsActive )
-                            {
-                                // Allow the user to activate the console without circling back.
-                                activateWithConsole = false;
-                                return;
-                            }
-
-                            var hwndTop = User32.GetForegroundWindow();
-                            if ( hwndTop != _targetWindow )
-                            {
-                                // The console is not the foreground window. We need to activate ourselves when the console becomes the foreground window.
-                                activateWithConsole = true;
-                                // For now there is nothing to do. The focus is on another application.
-                                return;
-                            }
-
-                            // The console is the foreground window. Check if we need to activate ourselves.
-                            if ( activateWithConsole )
-                            {
-                                Activate();
-                                activateWithConsole = false;
-                                Interlocked.Exchange( ref lastChange, changeTime );
-                            }
-                        }, DispatcherPriority.Send
-                    );
+                    Dispatcher.Invoke( HandleConsoleWindowMoves, DispatcherPriority.Background );
                 }
             }
             catch ( ThreadAbortException )
@@ -296,6 +213,88 @@ namespace fam.UI
             catch ( Exception ex )
             {
                 _trace.TraceError( "{0}", ex );
+            }
+        }
+
+        private void HandleConsoleWindowMoves()
+        {
+            var changeTime = DateTimeOffset.UtcNow.Ticks;
+
+            // If the console is iconic, iconize ourselves.
+            if ( User32.IsIconic( _targetWindow ) )
+            {
+                WindowState = WindowState.Minimized;
+                Interlocked.Exchange( ref _lastChange, changeTime );
+                return;
+            }
+
+            if ( !User32.GetWindowRect( _targetWindow, out var rect ) )
+            {
+                _trace.TraceError( "Unable to determine window position." );
+                return;
+            }
+
+            var interopHelper = new WindowInteropHelper( this );
+            User32.GetWindowRect( interopHelper.Handle, out var ourRect );
+
+            var windowPlacement = new WINDOWPLACEMENT();
+            if ( !User32.GetWindowPlacement( _targetWindow, ref windowPlacement ) )
+            {
+                _trace.TraceError( "Unable to determine window placement. Smart-maximization is not supported." );
+            }
+            else if ( windowPlacement.showCmd == ShowWindowValue.SW_MAXIMIZE )
+            {
+                _trace.TraceVerbose( "Maximization detected; will try to smart-maximize." );
+                User32.ShowWindow( _targetWindow, ShowWindowValue.SW_RESTORE );
+                if ( !WaitForRestore( _targetWindow, TimeSpan.FromMilliseconds( 500 ) ) )
+                {
+                    _trace.TraceError( "Unable to restore target window; smart-maximize failed." );
+                    return;
+                }
+
+                User32.MoveWindow( _targetWindow, rect.X, rect.Y, rect.Width, rect.Height - ourRect.Height, true );
+                Interlocked.Exchange( ref _lastChange, changeTime );
+                return;
+            }
+
+            // Otherwise get out of iconic state.
+            if ( WindowState != WindowState.Normal )
+            {
+                WindowState = WindowState.Normal;
+                Interlocked.Exchange( ref _lastChange, changeTime );
+            }
+
+            var newTop = rect.Bottom + 1;
+            if ( ourRect.Left != rect.Left || ourRect.Top != newTop || ourRect.Right != rect.Right )
+            {
+                // Using Win32 to move because it works regardless of DPI settings.
+                User32.MoveWindow( interopHelper.Handle, rect.X, newTop, rect.Width, ourRect.Height, true );
+                Interlocked.Exchange( ref _lastChange, changeTime );
+            }
+
+            // If we are active, we know that the console is not. This is a final state.
+            if ( IsActive )
+            {
+                // Allow the user to activate the console without circling back.
+                _activateWithConsole = false;
+                return;
+            }
+
+            var hwndTop = User32.GetForegroundWindow();
+            if ( hwndTop != _targetWindow )
+            {
+                // The console is not the foreground window. We need to activate ourselves when the console becomes the foreground window.
+                _activateWithConsole = true;
+                // For now there is nothing to do. The focus is on another application.
+                return;
+            }
+
+            // The console is the foreground window. Check if we need to activate ourselves.
+            if ( _activateWithConsole )
+            {
+                Activate();
+                _activateWithConsole = false;
+                Interlocked.Exchange( ref _lastChange, changeTime );
             }
         }
 

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -15,13 +16,18 @@ namespace fam.UI
     /// </summary>
     public partial class SearchWindow : Window
     {
+        // If the user presses key down, delay updates from search. This prevents losing focus/position while
+        // the user is navigating to a row in the result.
+        private static readonly TimeSpan UpdateDelayForKeyDown = TimeSpan.FromSeconds( 2 );
+
         private readonly TraceSource _trace;
         private readonly Searcher _searcher;
         private Findings _lastFindings;
+        private DateTime _noUpdatesBefore;
 
         public SearchWindow( Searcher searcher )
         {
-            _trace = DiagnosticsCenter.GetTraceSource( nameof(SearchWindow) );
+            _trace = DiagnosticsCenter.GetTraceSource( nameof( SearchWindow ) );
             _searcher = searcher ?? throw new ArgumentNullException( nameof( searcher ) );
             CurrentFindings = new ObservableCollection<IStoredItem>();
             DataContext = this;
@@ -43,6 +49,15 @@ namespace fam.UI
             if ( findings == _lastFindings )
                 return;
 
+            var now = DateTime.UtcNow;
+            if ( now < _noUpdatesBefore )
+            {
+                Task.Delay( _noUpdatesBefore - now + TimeSpan.FromMilliseconds( 100 ) ).ContinueWith(
+                    task => Dispatcher.Invoke( FindingsChanged )
+                );
+                return;
+            }
+
             _trace.TraceVerbose( "Detected new findings" );
 
             CurrentFindings.Clear();
@@ -59,6 +74,9 @@ namespace fam.UI
             {
                 Dispatcher.Invoke( FindingsChanged );
             }
+
+            // 1 second in the past to insure immediate update.
+            _noUpdatesBefore = DateTime.UtcNow - TimeSpan.FromSeconds( 1 );
 
             _searcher.SetSearchText( TbSearch.Text, OnNewFindings );
         }
@@ -112,6 +130,7 @@ namespace fam.UI
 
             LbSearchResults.SelectedIndex = idx;
             LbSearchResults.ScrollIntoView( LbSearchResults.Items[idx] );
+            _noUpdatesBefore = DateTime.UtcNow + UpdateDelayForKeyDown;
         }
 
         private void CloseAndReturnSelection( object sender, RoutedEventArgs e )
