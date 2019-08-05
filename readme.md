@@ -25,7 +25,7 @@ Then run `fam -h` to check if the familiar is in the path. If not, close and ope
 Let's say you use **OneDrive** or **DropBox**. In order to automatically store all your commands there, do this:
 
     md "%OneDrive%\familiar"
-    fam --connect "%OneDrive%\familiar"
+    fam --connect "%OneDrive%"
 
 Now all commands you write will be stored there. Do this for other machines, and they will all see the same history. You can choose any directory, even a shared folder such as `\\myserver\shared\familiar`.
 
